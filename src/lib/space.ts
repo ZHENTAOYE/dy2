@@ -292,11 +292,19 @@ export const project = (cam: Cam, x: number, y: number, z: number, out: number[]
 // the filaments and clumped in the nodes. Cached per seed.
 export type WebPoint = {x: number; y: number; z: number; b: number; c: RGB; s: number};
 
-export const makeCosmicWeb = (seed: number, nodes: number, box: number, perEdge: number, perNode: number) => {
+export const makeCosmicWeb = (
+  seed: number,
+  nodes: number,
+  box: number,
+  perEdge: number,
+  perNode: number,
+  thick = 0.035,
+  halo = 0.35,
+) => {
   const r = mulberry32(seed);
   const N: [number, number, number, number][] = [];
   for (let i = 0; i < nodes; i++) {
-    N.push([(r() * 2 - 1) * box, (r() * 2 - 1) * box, (r() * 2 - 1) * box, 0.4 + r() * 0.8]);
+    N.push([(r() * 2 - 1) * box, (r() * 2 - 1) * box, (r() * 2 - 1) * box, 0.4 + Math.pow(r(), 2) * 1.6]);
   }
   const pts: WebPoint[] = [];
   const edges = new Set<string>();
@@ -312,7 +320,7 @@ export const makeCosmicWeb = (seed: number, nodes: number, box: number, perEdge:
       const a = N[i];
       const b = N[j];
       const len = Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2);
-      const cnt = Math.round(perEdge * (0.5 + len / box));
+      const cnt = Math.round(perEdge * (0.4 + (len / box) * 0.9));
       // A gently curved filament: offset the midpoint.
       const mx = (a[0] + b[0]) / 2 + gauss(r) * len * 0.12;
       const my = (a[1] + b[1]) / 2 + gauss(r) * len * 0.12;
@@ -323,15 +331,16 @@ export const makeCosmicWeb = (seed: number, nodes: number, box: number, perEdge:
         const x = u * u * a[0] + 2 * u * t * mx + t * t * b[0];
         const y = u * u * a[1] + 2 * u * t * my + t * t * b[1];
         const z = u * u * a[2] + 2 * u * t * mz + t * t * b[2];
-        const thick = len * 0.025 * (0.6 + Math.sin(t * Math.PI) * 0.8);
+        const isHalo = r() < halo;
+        const th = len * thick * (0.6 + Math.sin(t * Math.PI) * 0.6) * (isHalo ? 3.2 : 1);
         const hot = r();
         pts.push({
-          x: x + gauss(r) * thick,
-          y: y + gauss(r) * thick,
-          z: z + gauss(r) * thick,
-          b: 0.25 + 0.6 * r(),
-          c: hot < 0.55 ? [140, 120, 255] : hot < 0.85 ? [90, 170, 255] : [255, 170, 230],
-          s: r() < 0.04 ? 2 : 1,
+          x: x + gauss(r) * th,
+          y: y + gauss(r) * th,
+          z: z + gauss(r) * th,
+          b: isHalo ? 0.12 + 0.2 * r() : 0.3 + 0.6 * r(),
+          c: hot < 0.55 ? [120, 85, 255] : hot < 0.85 ? [70, 150, 255] : [255, 110, 210],
+          s: r() < 0.03 ? 2 : 1,
         });
       }
     }
@@ -339,16 +348,16 @@ export const makeCosmicWeb = (seed: number, nodes: number, box: number, perEdge:
   for (const nd of N) {
     const cnt = Math.round(perNode * nd[3]);
     for (let k = 0; k < cnt; k++) {
-      const rad = Math.abs(gauss(r)) * box * 0.035 * nd[3];
+      const rad = Math.abs(gauss(r)) * box * 0.03 * nd[3] * (r() < 0.3 ? 2.5 : 1);
       const dir = [gauss(r), gauss(r), gauss(r)];
       const l = Math.hypot(dir[0], dir[1], dir[2]) || 1;
       pts.push({
         x: nd[0] + (dir[0] / l) * rad,
         y: nd[1] + (dir[1] / l) * rad,
         z: nd[2] + (dir[2] / l) * rad,
-        b: 0.5 + 0.5 * r(),
-        c: r() < 0.6 ? [255, 214, 160] : [255, 245, 230],
-        s: r() < 0.15 ? 2 : 1,
+        b: 0.35 + 0.65 * r(),
+        c: r() < 0.6 ? [255, 190, 120] : [255, 236, 210],
+        s: r() < 0.12 ? 2 : 1,
       });
     }
   }
