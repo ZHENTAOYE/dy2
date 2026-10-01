@@ -103,7 +103,7 @@ const Scene: React.FC = () => (
           ctx.stroke();
         }
         ctx.restore();
-        label(ctx, cx - 520, cy + 330, "人类头发", "≈ 80 µm", C.amber, hv * clamp(1 - (80 * UM) / view / 1.2) * 2);
+        label(ctx, cx - 520, cy - 300, "人类头发", "≈ 80 µm", C.amber, hv * clamp(1 - (80 * UM) / view / 1.2) * 2);
       }
 
       // 2. 1971 transistor (≈10 µm layout) and a red blood cell (7.5 µm)
@@ -126,7 +126,7 @@ const Scene: React.FC = () => (
         ctx.fillStyle = "#1a1a24";
         for (const dx of [-3.3, 3.3]) for (const dy of [-1.5, 1.5]) ctx.fillRect(X(ox + (dx - 0.5) * UM), Y((dy - 0.5) * UM), s, s);
         ctx.restore();
-        label(ctx, X(ox), Y(7.2 * UM), "1971年的晶体管", "≈ 10 µm", C.green, tv);
+        label(ctx, X(ox), Math.max(84, Y(-6.4 * UM) - 34), "1971年的晶体管", "≈ 10 µm", C.green, tv);
         // red blood cell
         const rx = X(7.5 * UM);
         const ry = Y(0);
@@ -143,7 +143,7 @@ const Scene: React.FC = () => (
         ctx.arc(rx, ry, rr, 0, TAU);
         ctx.fill();
         ctx.restore();
-        label(ctx, rx, ry + rr + 56, "红细胞", "≈ 7.5 µm", "#ff6b6b", tv);
+        label(ctx, rx, Math.max(84, ry - rr - 46), "红细胞", "≈ 7.5 µm", "#ff6b6b", tv);
       }
 
       // 3. bacterium (2 µm rod)
@@ -176,7 +176,7 @@ const Scene: React.FC = () => (
         ctx.roundRect(-1 * s, -0.25 * s, 2 * s, 0.5 * s, 0.25 * s);
         ctx.fill();
         ctx.restore();
-        label(ctx, cx, cy + 0.9 * s + 40, "细菌", "≈ 2 µm", C.green, bv * clamp((2 * UM) / view / 0.15 - 0.5));
+        label(ctx, cx, Math.max(84, cy - 0.6 * s - 34), "细菌", "≈ 2 µm", C.green, bv * clamp((2 * UM) / view / 0.15 - 0.5) * clamp((1.1 - (2 * UM) / view) / 0.3));
       }
 
       // 4. modern transistors (fins × gates) beside a virus (100 nm)
@@ -211,7 +211,7 @@ const Scene: React.FC = () => (
           }
         ctx.globalCompositeOperation = "source-over";
         ctx.restore();
-        const lv = mv * clamp(1.2 - (200 * NM) / view);
+        const lv = mv * clamp(1.2 - (200 * NM) / view) * clamp(((200 * NM) / view - 0.2) / 0.12);
         label(ctx, X(-70 * NM), 120, "今天的晶体管", "栅极间距 ≈ 48 nm", C.cyan, lv);
         // virus
         const vx = X(110 * NM);
@@ -281,14 +281,14 @@ const Scene: React.FC = () => (
           ctx.lineTo(bx - 14, Y(3 * NM));
           ctx.stroke();
           ctx.textAlign = "left";
-          ctx.font = `900 36px ${FONT_CN}`;
+          ctx.font = `900 50px ${FONT_CN}`;
           ctx.fillStyle = "#fff";
           ctx.shadowColor = "#000";
           ctx.shadowBlur = 14;
-          ctx.fillText("≈ 6 纳米", bx + 18, Y(0) - 6);
-          ctx.font = `700 26px ${FONT_CN}`;
+          ctx.fillText("≈ 6 纳米", bx + 22, Y(0) - 8);
+          ctx.font = `700 32px ${FONT_CN}`;
           ctx.fillStyle = C.cyan;
-          ctx.fillText("约 25 个硅原子", bx + 18, Y(0) + 30);
+          ctx.fillText("约 25 个硅原子", bx + 22, Y(0) + 36);
           ctx.shadowBlur = 0;
           ctx.globalAlpha = 1;
         }
@@ -315,11 +315,11 @@ const ScaleBar: React.FC = () => {
     <>
       <div style={{ position: "absolute", left: 110, bottom: 220, textAlign: "left" }}>
         <div style={{ width: px, height: 12, borderLeft: "3px solid #fff", borderRight: "3px solid #fff", borderBottom: "3px solid #fff" }} />
-        <div style={{ fontFamily: FONT_CN, fontWeight: 700, fontSize: 30, color: "#fff", marginTop: 8, textShadow: "0 0 8px #000" }}>{lab}</div>
+        <div style={{ fontFamily: FONT_CN, fontWeight: 700, fontSize: 30, color: "#fff", marginTop: 8, textShadow: "0 0 8px #000, 0 0 18px #000" }}>{lab}</div>
       </div>
-      <div style={{ position: "absolute", right: 110, bottom: 210, textAlign: "right", fontFamily: FONT_MONO }}>
+      <div style={{ position: "absolute", right: 110, bottom: 210, textAlign: "right", fontFamily: FONT_MONO, textShadow: "0 0 10px #000, 0 0 24px #000" }}>
         <div style={{ fontSize: 22, letterSpacing: "0.3em", color: C.ice }}>MAGNIFICATION</div>
-        <div style={{ fontSize: 56, fontWeight: 800, color: "#fff", textShadow: `0 0 18px ${C.cyan}` }}>×{Math.round(mag).toLocaleString("en-US")}</div>
+        <div style={{ fontSize: 56, fontWeight: 800, color: "#fff", textShadow: `0 0 18px ${C.cyan}, 0 0 12px #000` }}>×{Math.round(mag).toLocaleString("en-US")}</div>
       </div>
     </>
   );

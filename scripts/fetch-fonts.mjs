@@ -2,8 +2,9 @@
 // so the video renders offline with tiny font files. Re-run after changing on-screen text.
 import { readFileSync, readdirSync, statSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const OUT = join(ROOT, "public/fonts");
 mkdirSync(OUT, { recursive: true });
 

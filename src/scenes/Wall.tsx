@@ -165,8 +165,8 @@ const ChartCanvas: React.FC = () => (
 const ChipCanvas: React.FC = () => (
   <Canvas
     draw={(ctx, _w, _h, f) => {
+      if (f < 80) return;
       const a = ease.outBack(prog(f, 80, 110));
-      if (a <= 0) return;
       const heat = heatAt(f);
       const cx = 1560;
       const cy = 400;
@@ -274,7 +274,7 @@ const ChipHud: React.FC = () => {
             }}
           >
             <div style={{ width: 0, height: 0, borderLeft: "10px solid transparent", borderRight: "10px solid transparent", borderBottom: `14px solid ${C.red}`, margin: "0 auto" }} />
-            <div style={{ fontFamily: FONT_CN, fontWeight: 900, fontSize: 22, color: C.red, whiteSpace: "nowrap" }}>CPU</div>
+            <div style={{ fontFamily: FONT_MONO, fontWeight: 800, fontSize: 22, color: "#fff", textShadow: `0 0 10px ${C.red}, 0 0 4px ${C.red}`, whiteSpace: "nowrap" }}>CPU</div>
           </div>
         </div>
       </div>

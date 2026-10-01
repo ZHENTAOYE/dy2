@@ -20,10 +20,19 @@ const LX = 120;
 const RX = 1040;
 const PY = 190;
 
-const IMG_W = 380;
-const IMG_H = 235;
+const IMG_W = 720;
+const IMG_H = 430;
+const PAL: [number, number, number, number][] = [
+  [0, 4, 8, 30],
+  [0.25, 20, 60, 170],
+  [0.5, 56, 214, 255],
+  [0.75, 235, 250, 255],
+  [1, 255, 166, 61],
+];
+/** CPU scanline speed (image rows per frame): ~1% of the picture every 2 seconds. */
+const CPU_ROWS = 0.22;
 let mandel: HTMLCanvasElement | null = null;
-/** A Mandelbrot image (the classic GPU demo), computed once. */
+/** A Mandelbrot image (the classic GPU demo: seahorse valley, smooth colouring), computed once. */
 const mandelbrot = () => {
   if (mandel) return mandel;
   const c = document.createElement("canvas");
@@ -31,15 +40,16 @@ const mandelbrot = () => {
   c.height = IMG_H;
   const g = c.getContext("2d")!;
   const img = g.createImageData(IMG_W, IMG_H);
+  const max = 400;
+  const span = 0.012;
   for (let y = 0; y < IMG_H; y++)
     for (let x = 0; x < IMG_W; x++) {
-      const cr = -0.745 + (x / IMG_W - 0.5) * 0.06;
-      const ci = 0.11 + (y / IMG_H - 0.5) * 0.06 * (IMG_H / IMG_W);
+      const cr = -0.7453 + (x / IMG_W - 0.5) * span;
+      const ci = 0.1127 + (y / IMG_H - 0.5) * span * (IMG_H / IMG_W);
       let zr = 0;
       let zi = 0;
       let i = 0;
-      const max = 160;
-      while (i < max && zr * zr + zi * zi < 4) {
+      while (i < max && zr * zr + zi * zi < 256) {
         const t = zr * zr - zi * zi + cr;
         zi = 2 * zr * zi + ci;
         zr = t;
@@ -49,12 +59,18 @@ const mandelbrot = () => {
       if (i === max) {
         img.data[k] = 2;
         img.data[k + 1] = 4;
-        img.data[k + 2] = 16;
+        img.data[k + 2] = 14;
       } else {
-        const v = Math.sqrt(i / max);
-        img.data[k] = Math.floor(255 * clamp(1.6 * v - 0.25));
-        img.data[k + 1] = Math.floor(255 * clamp(0.3 + 0.9 * Math.sin(v * 3.1)));
-        img.data[k + 2] = Math.floor(255 * clamp(0.6 + 0.5 * Math.cos(v * 5)));
+        const n = i + 1 - Math.log2(Math.log(Math.sqrt(zr * zr + zi * zi)));
+        const t = 0.5 - 0.5 * Math.cos(((n / 24) % 1) * Math.PI * 2);
+        let j = 1;
+        while (j < PAL.length - 1 && t > PAL[j][0]) j++;
+        const [a0, r0, g0, b0] = PAL[j - 1];
+        const [a1, r1, g1, b1] = PAL[j];
+        const u = clamp((t - a0) / (a1 - a0));
+        img.data[k] = r0 + (r1 - r0) * u;
+        img.data[k + 1] = g0 + (g1 - g0) * u;
+        img.data[k + 2] = b0 + (b1 - b0) * u;
       }
       img.data[k + 3] = 255;
     }
@@ -131,12 +147,12 @@ const Panels: React.FC = () => (
         const iw = PW - 40;
         const ih = PH - 40;
         // CPU: scanline by scanline, painfully slow
-        const rowsDone = Math.min(IMG_H, Math.floor(rt * 0.12));
+        const rowsDone = Math.min(IMG_H, Math.floor(rt * CPU_ROWS));
         ctx.globalAlpha = a * clamp(rt / 10);
         ctx.fillStyle = "rgba(0,0,0,0.75)";
         ctx.fillRect(LX + 20, PY + 20, iw, ih);
         if (rowsDone > 0) ctx.drawImage(img, 0, 0, IMG_W, rowsDone, LX + 20, PY + 20, iw, (ih * rowsDone) / IMG_H);
-        const sy = PY + 20 + (ih * (rowsDone + ((rt * 0.12) % 1))) / IMG_H;
+        const sy = PY + 20 + (ih * (rowsDone + ((rt * CPU_ROWS) % 1))) / IMG_H;
         ctx.globalCompositeOperation = "lighter";
         ctx.fillStyle = withAlpha(C.amber, 0.9);
         ctx.fillRect(LX + 20, sy, iw * (((rt * 3) % 60) / 60), 3);
@@ -172,7 +188,7 @@ const PanelLabels: React.FC = () => {
   const a = panelA(frame);
   if (a <= 0) return null;
   const race = frame >= RACE;
-  const cpuP = race ? Math.min(IMG_H, (frame - RACE) * 0.12) / IMG_H : 0;
+  const cpuP = race ? Math.min(IMG_H, (frame - RACE) * CPU_ROWS) / IMG_H : 0;
   const gpuP = frame >= BURST ? clamp((frame - BURST) / 15) : 0;
   const head = (x: number, t: string, sub: string, col: string, p: number) => (
     <div style={{ position: "absolute", left: x, top: PY - 96, width: PW }}>
@@ -207,13 +223,16 @@ const Bar: React.FC<{ x: number; p: number; col: string }> = ({ x, p, col }) => 
 
 // ---- matrix multiplication -------------------------------------------------
 const N = 8;
-const CELL = 46;
-const CX0 = 1010; // C matrix top-left
-const CY0 = 430;
-const AX0 = CX0 - N * CELL - 50;
-const BY0 = CY0 - N * CELL - 30;
-const A = (i: number, k: number) => Math.floor(hash(i * 13.1 + k * 7.3 + 1) * 10);
-const Bm = (k: number, j: number) => Math.floor(hash(k * 5.7 + j * 11.9 + 2) * 10);
+const CELL = 40;
+const GAP = 40;
+const BLOCK = N * CELL;
+const PITCH = BLOCK + GAP; // A, B and C sit on one grid, so the zoom-out reveals a sea of identical blocks
+const CX0 = 980; // C matrix top-left
+const CY0 = 440;
+const AX0 = CX0 - PITCH;
+const BY0 = CY0 - PITCH;
+const A = (i: number, k: number) => 1 + Math.floor(hash(i * 13.1 + k * 7.3 + 1) * 9);
+const Bm = (k: number, j: number) => 1 + Math.floor(hash(k * 5.7 + j * 11.9 + 2) * 9);
 const Cval = (i: number, j: number) => {
   let s = 0;
   for (let k = 0; k < N; k++) s += A(i, k) * Bm(k, j);
@@ -223,40 +242,55 @@ const ONE = MATRIX + 40; // first cell computed alone
 const ALL = MATRIX + 120; // then every cell at once
 const ZOOM = MATRIX + 175;
 
+/** Zoom-out: 0..1, the scale of the matrix block and where C's centre sits on screen. */
+const zoomAt = (f: number) => {
+  const z = ease.inOutCubic(prog(f, ZOOM, ZOOM + 110));
+  const ccx = CX0 + BLOCK / 2;
+  const ccy = CY0 + BLOCK / 2;
+  return { z, scale: lerp(1, 0.07, z), ccx, ccy, px: lerp(ccx, 960, z), py: lerp(ccy, 470, z) };
+};
+
 const MatrixCanvas: React.FC = () => (
   <Canvas
     draw={(ctx, w, h, f) => {
       const a = ease.outCubic(prog(f, MATRIX - 10, MATRIX + 20));
       if (a <= 0) return;
-      const z = ease.inOutCubic(prog(f, ZOOM, ZOOM + 110));
-      const scale = lerp(1, 0.08, z);
-      const ccx = CX0 + (N * CELL) / 2;
-      const ccy = CY0 + (N * CELL) / 2;
-      // sea of compute behind (revealed by the zoom-out)
+      const { z, scale, ccx, ccy, px, py } = zoomAt(f);
+      // sea of compute: every block is another matrix multiply running at the same time
       if (z > 0) {
-        const cell = CELL * N * scale;
+        const pitch = PITCH * scale;
+        const bs = BLOCK * scale;
+        const sub = bs > 120 ? 8 : bs > 36 ? 4 : 1;
+        const sc = bs / sub;
+        const i0 = Math.floor(-px / pitch) - 1;
+        const i1 = Math.ceil((w - px) / pitch) + 1;
+        const j0 = Math.floor(-py / pitch) - 1;
+        const j1 = Math.ceil((h - py) / pitch) + 1;
         ctx.globalCompositeOperation = "lighter";
-        const cols = Math.ceil(w / cell) + 2;
-        const rows = Math.ceil(h / cell) + 2;
-        const sx = ccx - Math.ceil(cols / 2) * cell;
-        const sy = ccy - Math.ceil(rows / 2) * cell;
-        for (let j = 0; j < rows; j++)
-          for (let i = 0; i < cols; i++) {
-            const x = sx + i * cell;
-            const y = sy + j * cell;
-            const d = Math.hypot(x - ccx, y - ccy);
-            const wave = 0.5 + 0.5 * Math.sin(d * 0.012 - f * 0.25);
-            const tile = clamp((f - ZOOM - 20 - d * 0.05) / 15);
+        for (let j = j0; j <= j1; j++)
+          for (let i = i0; i <= i1; i++) {
+            if ((i === 0 && j === 0) || (i === -1 && j === 0) || (i === 0 && j === -1)) continue;
+            const x = px + i * pitch - bs / 2;
+            const y = py + j * pitch - bs / 2;
+            if (x > w || y > h || x + bs < 0 || y + bs < 0) continue;
+            const d = Math.hypot(i, j);
+            const tile = clamp((f - ZOOM - 8 - d * 1.6) / 12);
             if (tile <= 0) continue;
-            ctx.fillStyle = withAlpha(mix(C.blue, C.cyan, wave), (0.15 + 0.5 * wave * hash(i * 7 + j * 3 + Math.floor(f / 3))) * tile * z);
-            ctx.fillRect(x + 1, y + 1, cell - 2, cell - 2);
+            const wave = 0.5 + 0.5 * Math.sin(d * 0.55 - (f - ZOOM) * 0.22);
+            const col = mix(C.blue, C.cyan, wave);
+            for (let v = 0; v < sub; v++)
+              for (let u = 0; u < sub; u++) {
+                const flick = hash(i * 7.1 + j * 3.3 + u * 1.7 + v * 5.9 + Math.floor(f / 3));
+                ctx.fillStyle = withAlpha(col, (0.12 + 0.55 * wave * flick) * tile * z);
+                ctx.fillRect(x + u * sc + (sub > 1 ? 1 : 0), y + v * sc + (sub > 1 ? 1 : 0), sc - (sub > 1 ? 2 : 0), sc - (sub > 1 ? 2 : 0));
+              }
           }
-        glow(ctx, ccx, ccy, 900 * z, C.cyan, 0.35 * z, 0.03);
+        glow(ctx, px, py, 900 * z, C.cyan, 0.35 * z, 0.03);
         ctx.globalCompositeOperation = "source-over";
       }
       ctx.save();
-      ctx.globalAlpha = a * (1 - z * 0.3);
-      ctx.translate(ccx, ccy);
+      ctx.globalAlpha = a;
+      ctx.translate(px, py);
       ctx.scale(scale, scale);
       ctx.translate(-ccx, -ccy);
       ctx.textAlign = "center";
@@ -269,10 +303,10 @@ const MatrixCanvas: React.FC = () => (
             const x = x0 + j * CELL;
             const y = y0 + i * CELL;
             const hv = hi(i, j);
-            ctx.fillStyle = withAlpha(col, 0.08 + 0.5 * hv);
+            ctx.fillStyle = withAlpha(col, 0.1 + 0.5 * hv);
             ctx.fillRect(x + 2, y + 2, CELL - 4, CELL - 4);
-            ctx.font = `800 ${hv > 0.5 ? 22 : 18}px ${FONT_MONO}`;
-            ctx.fillStyle = hv > 0.3 ? "#fff" : withAlpha("#ffffff", 0.6);
+            ctx.font = `800 ${hv > 0.5 ? 20 : 17}px ${FONT_MONO}`;
+            ctx.fillStyle = hv > 0.3 ? "#fff" : withAlpha("#ffffff", 0.62);
             const v = val(i, j);
             if (v) ctx.fillText(v, x + CELL / 2, y + CELL / 2 + 1);
           }
@@ -295,15 +329,16 @@ const MatrixCanvas: React.FC = () => (
         (i, j) => (i === 0 && j === 0 && f >= ONE ? 1 : allT(i, j) * (1 - clamp((f - ALL - 30) / 30) * 0.5)),
       );
       ctx.restore();
-      // the running product for the single cell
+      // the running dot product for the single cell
       if (f >= ONE && f < ALL) {
         ctx.font = `800 30px ${FONT_MONO}`;
         ctx.fillStyle = "#fff";
-        ctx.textAlign = "left";
-        ctx.globalAlpha = a;
+        ctx.textAlign = "right";
+        ctx.textBaseline = "alphabetic";
+        ctx.globalAlpha = a * (1 - prog(f, ALL - 8, ALL));
         const terms = [];
         for (let k = 0; k <= Math.min(N - 1, curK); k++) terms.push(`${A(0, k)}×${Bm(k, 0)}`);
-        ctx.fillText(terms.slice(-4).join(" + "), AX0, BY0 + 60);
+        ctx.fillText((curK > 3 ? "… + " : "") + terms.slice(-4).join(" + "), CX0 - 28, CY0 - 22);
         ctx.globalAlpha = 1;
       }
     }}
@@ -319,9 +354,9 @@ const MatrixLabels: React.FC = () => {
   );
   return (
     <AbsoluteFill style={{ opacity: a }}>
-      {s(AX0 + (N * CELL) / 2 - 14, CY0 + N * CELL + 6, "A", C.amber)}
-      {s(CX0 + N * CELL + 18, BY0 + (N * CELL) / 2 - 26, "B", C.violet)}
-      {s(CX0 + N * CELL + 18, CY0 + (N * CELL) / 2 - 26, "C = A × B", C.cyan)}
+      {s(AX0 + BLOCK / 2 - 14, CY0 + BLOCK + 4, "A", C.amber)}
+      {s(CX0 + BLOCK + 22, BY0 + BLOCK / 2 - 28, "B", C.violet)}
+      {s(CX0 + BLOCK + 22, CY0 + BLOCK / 2 - 28, "C = A × B", C.cyan)}
     </AbsoluteFill>
   );
 };

@@ -5,8 +5,9 @@ import { bundle } from "@remotion/bundler";
 import { renderStill, selectComposition, ensureBrowser } from "@remotion/renderer";
 import { readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const [outDir, ...specs] = process.argv.slice(2);
 mkdirSync(outDir, { recursive: true });
 const timeline = JSON.parse(readFileSync(join(ROOT, "src/timeline.json"), "utf8"));
