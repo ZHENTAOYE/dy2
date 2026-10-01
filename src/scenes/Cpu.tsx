@@ -424,7 +424,7 @@ const Cores: React.FC<{f: number}> = ({f}) => {
 				<div style={{position: 'absolute', top: 640, left: 0, right: 0, transform: `scale(${slam})`, opacity: ep(f, CORE_HIT - 14, CORE_HIT - 8)}}>
 					<div style={{position: 'absolute', left: -60, right: -60, top: -110, height: 400, background: 'radial-gradient(ellipse 50% 50% at 50% 50%, rgba(2,6,14,0.9), transparent)'}} />
 					<div style={{position: 'relative', textAlign: 'center', fontFamily: FONT_CN, fontWeight: 900, fontSize: 48, color: '#bdefff', marginBottom: 24}}>每秒约</div>
-					<Digits value={fmtInt(count)} size={78} color="#fff" glow={C.cyan} style={{position: 'relative'}} />
+					<Digits value={fmtInt(count)} size={68} color="#fff" glow={C.cyan} style={{position: 'relative'}} />
 					<div
 						style={{
 							position: 'relative',

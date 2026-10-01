@@ -3,6 +3,7 @@ import {AbsoluteFill, Html5Audio, Sequence, getStaticFiles, staticFile} from 're
 import {Background} from './components/Background';
 import {Ladder} from './components/Ladder';
 import {Overlay, Shake} from './components/Overlay';
+import {Transitions} from './components/Transitions';
 import {C} from './theme';
 import {SCENES, SceneId} from './timeline';
 import {Hook} from './scenes/Hook';
@@ -42,6 +43,7 @@ export const OneSecond: React.FC = () => (
 				);
 			})}
 			<Ladder />
+			<Transitions />
 		</Shake>
 		<Overlay />
 		{hasSoundtrack() ? <Html5Audio src={staticFile('soundtrack.wav')} /> : null}

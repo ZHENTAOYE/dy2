@@ -38,7 +38,7 @@ export const Overlay: React.FC = () => {
 					inset: 0,
 					width: '100%',
 					height: '100%',
-					opacity: 0.075,
+					opacity: 0.05,
 					mixBlendMode: 'overlay',
 				}}
 			/>

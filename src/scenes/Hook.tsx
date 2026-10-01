@@ -23,7 +23,7 @@ export const Hook: React.FC = () => {
 	const headY = CY - Math.cos(theta) * R;
 	const clockOut = ep(f, 150, 166, easeIn);
 	const clockScale = 1 - 0.1 * ep(f, 100, 140) + clockOut * 2.5;
-	const clockOpacity = clamp(f / 12) * (1 - clockOut);
+	const clockOpacity = clamp((f + 8) / 10) * (1 - clockOut);
 
 	const arcPath = (() => {
 		if (sweep <= 0) return '';
@@ -47,7 +47,7 @@ export const Hook: React.FC = () => {
 				y2={CY - Math.cos(a) * r2}
 				stroke={passed ? C.cyan : '#4a5a7a'}
 				strokeWidth={major ? 5 : 2.5}
-				opacity={clamp((f - i * 0.15) / 10) * (passed ? 1 : 0.5)}
+				opacity={clamp((f + 6 - i * 0.1) / 10) * (passed ? 1 : 0.5)}
 			/>
 		);
 	});
@@ -90,7 +90,7 @@ export const Hook: React.FC = () => {
 							<stop offset="1" stopColor={C.cyan} />
 						</linearGradient>
 					</defs>
-					<circle cx={CX} cy={CY} r={R} fill="none" stroke="#1a2a44" strokeWidth={4} opacity={clamp(f / 15)} />
+					<circle cx={CX} cy={CY} r={R} fill="none" stroke="#1a2a44" strokeWidth={4} opacity={clamp((f + 8) / 12)} />
 					{ticks}
 					{arcPath ? (
 						<>
@@ -126,7 +126,7 @@ export const Hook: React.FC = () => {
 								fontWeight: 700,
 								fontSize: 110,
 								color: C.white,
-								opacity: clamp((f - 8) / 10),
+								opacity: clamp((f + 6) / 10),
 								textShadow: `0 0 30px ${C.cyan}`,
 							}}
 						>

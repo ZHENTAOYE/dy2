@@ -181,15 +181,16 @@ const Galaxy: React.FC<{x: number; y: number; size: number; f: number; seed: num
 			g.addColorStop(1, 'rgba(255,200,120,0)');
 			ctx.fillStyle = g;
 			ctx.fillRect(0, 0, w, h);
-			for (let i = 0; i < 700; i++) {
+			for (let i = 0; i < 1400; i++) {
 				const arm = i % 2;
 				const t = r();
 				const ang = t * 7 + arm * Math.PI + f * 0.01 + (r() - 0.5) * 0.5;
 				const rad = t * w * 0.46 + (r() - 0.5) * 8;
 				const px = cx + Math.cos(ang) * rad;
 				const py = cy + Math.sin(ang) * rad * 0.55;
-				ctx.fillStyle = r() > 0.6 ? 'rgba(160,190,255,0.8)' : 'rgba(255,220,180,0.7)';
-				ctx.fillRect(px, py, 1.6, 1.6);
+				ctx.fillStyle = r() > 0.6 ? 'rgba(170,200,255,0.95)' : 'rgba(255,225,185,0.9)';
+				const sz = 1.4 + r() * 1.8;
+				ctx.fillRect(px, py, sz, sz);
 			}
 		},
 		[f],
@@ -202,7 +203,7 @@ const Cosmic: React.FC<{f: number}> = ({f}) => {
 	const years = yearsAt(f);
 	// final reading rounded to 2 significant digits (≈ 540 亿年)
 	const [num, unit] = fmtYears(f >= COSMIC_HIT ? Math.round(ALONE_YEARS / 1e9) * 1e9 : Math.min(years, ALONE_YEARS));
-	const slam = f >= COSMIC_HIT ? 1 + 0.45 * Math.exp(-(f - COSMIC_HIT) / 5) : 1;
+	const slam = f >= COSMIC_HIT ? 1 + 0.25 * Math.exp(-(f - COSMIC_HIT) / 5) : 1;
 	const passedUniverse = f >= frameForYears(1.38e10);
 	const hot = passedUniverse ? 1 : 0;
 	const latest = MILESTONES.filter((m) => years >= m.y);
@@ -243,7 +244,7 @@ const Cosmic: React.FC<{f: number}> = ({f}) => {
 					textShadow: `0 0 30px ${hot ? C.gold : C.blue}, 0 0 80px ${hot ? C.orange : C.blue}`,
 				}}
 			>
-				<span style={{fontFamily: FONT_NUM, fontWeight: 900, fontSize: num.length > 5 ? 170 : 210, lineHeight: 1}}>{num}</span>
+				<span style={{fontFamily: FONT_NUM, fontWeight: 900, fontSize: num.length > 4 ? 150 : 180, lineHeight: 1}}>{num}</span>
 				<span style={{fontFamily: FONT_CN, fontWeight: 900, fontSize: 110, color: hot ? C.gold : '#9fc4ff'}}>{unit}</span>
 			</div>
 			{/* milestone stack */}
@@ -282,8 +283,9 @@ const Cosmic: React.FC<{f: number}> = ({f}) => {
 						const p = ep(f, COSMIC_HIT + 4 + i * 5, COSMIC_HIT + 18 + i * 5);
 						return (
 							<React.Fragment key={i}>
-								<Galaxy x={210 + i * 220} y={1010} size={200} f={f} seed={77 + i} opacity={p} />
-								<div style={{position: 'absolute', left: 210 + i * 220 - 100, width: 200, top: 1120, textAlign: 'center', fontFamily: FONT_MONO, fontWeight: 700, fontSize: 24, color: C.gold, opacity: p}}>
+								<Glow x={235 + i * 205} y={1030} r={120} color="#ffcf80" opacity={0.35 * p} />
+								<Galaxy x={235 + i * 205} y={1030} size={210} f={f} seed={77 + i} opacity={p} />
+								<div style={{position: 'absolute', left: 235 + i * 205 - 100, width: 200, top: 1140, textAlign: 'center', fontFamily: FONT_MONO, fontWeight: 700, fontSize: 24, color: C.gold, opacity: p}}>
 									138 亿年
 								</div>
 							</React.Fragment>
