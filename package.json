@@ -1,0 +1,25 @@
+{
+  "name": "cosmic-expansion",
+  "version": "1.0.0",
+  "private": true,
+  "description": "宇宙膨胀 · 科普动画（Remotion 程序化绘制）",
+  "scripts": {
+    "studio": "remotion studio",
+    "audio": "python3 scripts/make_soundtrack.py",
+    "render": "remotion render CosmicExpansion out/cosmic-expansion.mp4",
+    "render:vertical": "remotion render CosmicExpansionVertical out/cosmic-expansion-vertical.mp4",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.531",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "remotion": "4.0.531"
+  },
+  "devDependencies": {
+    "@remotion/bundler": "4.0.531",
+    "@remotion/renderer": "4.0.531",
+    "@types/react": "19.3.0",
+    "typescript": "7.0.2"
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "fps": 30,
+  "scenes": [
+    {"id": "hook", "duration": 16},
+    {"id": "hubble", "duration": 26},
+    {"id": "space", "duration": 24},
+    {"id": "rewind", "duration": 15},
+    {"id": "bigbang", "duration": 28},
+    {"id": "cmb", "duration": 26},
+    {"id": "web", "duration": 24},
+    {"id": "darkenergy", "duration": 24},
+    {"id": "observable", "duration": 32},
+    {"id": "finale", "duration": 32}
+  ],
+  "cues": [
+    {"scene": "hook", "t": 5.0, "type": "swell", "len": 5.4, "strength": 0.6},
+    {"scene": "hook", "t": 8.4, "type": "riser", "len": 2.1, "strength": 1.0},
+    {"scene": "hook", "t": 10.5, "type": "impact", "strength": 1.0},
+    {"scene": "hook", "t": 10.5, "type": "braam", "len": 5.0, "chord": "Dm", "strength": 0.9},
+
+    {"scene": "hubble", "t": 13.4, "type": "whoosh", "strength": 0.6},
+    {"scene": "hubble", "t": 21.6, "type": "riser", "len": 0.9, "strength": 0.5},
+    {"scene": "hubble", "t": 22.0, "type": "impact", "strength": 0.6},
+
+    {"scene": "space", "t": 4.2, "type": "impact", "strength": 0.45},
+    {"scene": "space", "t": 16.5, "type": "impact", "strength": 0.5},
+    {"scene": "space", "t": 20.2, "type": "reverse", "len": 3.8, "strength": 0.8},
+
+    {"scene": "rewind", "t": 0.0, "type": "heartbeat", "len": 13.6, "strength": 0.9},
+    {"scene": "rewind", "t": 0.0, "type": "shepard", "len": 13.8, "strength": 0.9},
+    {"scene": "rewind", "t": 13.8, "type": "suck", "strength": 1.0},
+
+    {"scene": "bigbang", "t": 0.5, "type": "tone", "len": 3.5, "strength": 0.4},
+    {"scene": "bigbang", "t": 2.2, "type": "riser", "len": 1.8, "strength": 1.0},
+    {"scene": "bigbang", "t": 4.0, "type": "bang", "strength": 1.0},
+    {"scene": "bigbang", "t": 4.0, "type": "braam", "len": 8.0, "chord": "Dm", "strength": 1.0},
+    {"scene": "bigbang", "t": 10.0, "type": "riser", "len": 7.6, "strength": 0.9},
+    {"scene": "bigbang", "t": 17.7, "type": "impact", "strength": 0.8},
+    {"scene": "bigbang", "t": 17.7, "type": "braam", "len": 5.0, "chord": "Bb", "strength": 0.7},
+
+    {"scene": "cmb", "t": 9.0, "type": "riser", "len": 3.0, "strength": 0.8},
+    {"scene": "cmb", "t": 12.0, "type": "bloom", "len": 9.0, "chord": "Fadd9", "strength": 1.0},
+    {"scene": "cmb", "t": 12.0, "type": "impact", "strength": 0.55},
+
+    {"scene": "web", "t": 4.3, "type": "ignitions", "len": 5.0, "strength": 0.8},
+    {"scene": "web", "t": 12.0, "type": "impact", "strength": 0.7},
+    {"scene": "web", "t": 12.0, "type": "drums", "len": 12.0, "strength": 0.8},
+
+    {"scene": "darkenergy", "t": 1.5, "type": "supernova", "strength": 0.8},
+    {"scene": "darkenergy", "t": 7.6, "type": "riser", "len": 0.9, "strength": 0.6},
+    {"scene": "darkenergy", "t": 8.5, "type": "impact", "strength": 0.9},
+    {"scene": "darkenergy", "t": 8.5, "type": "braam", "len": 4.0, "chord": "Gm", "strength": 0.8},
+    {"scene": "darkenergy", "t": 12.0, "type": "braam", "len": 4.0, "chord": "Eb", "strength": 0.6},
+
+    {"scene": "observable", "t": 3.5, "type": "drums", "len": 20.5, "strength": 1.0},
+    {"scene": "observable", "t": 18.0, "type": "riser", "len": 6.2, "strength": 1.0},
+    {"scene": "observable", "t": 24.3, "type": "bang", "strength": 0.9},
+    {"scene": "observable", "t": 24.3, "type": "braam", "len": 7.0, "chord": "F", "strength": 1.0},
+
+    {"scene": "finale", "t": 17.0, "type": "riser", "len": 3.4, "strength": 1.0},
+    {"scene": "finale", "t": 20.4, "type": "bang", "strength": 1.0},
+    {"scene": "finale", "t": 20.4, "type": "bloom", "len": 11.0, "chord": "Dadd9", "strength": 1.0}
+  ]
+}
