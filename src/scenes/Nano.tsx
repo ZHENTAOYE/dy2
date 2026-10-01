@@ -263,7 +263,7 @@ const Scene: React.FC = () => (
             const under = Math.abs(xx) < 8 * NM;
             const col = inFin ? C.cyan : under ? "#c9d2e6" : "#3d5a80";
             const a = av * (inFin ? 0.95 : 0.35 * outer) * (0.8 + 0.2 * Math.sin(f * 0.2 + xx * 4e9 + y * 3e9));
-            glow(ctx, X(xx), Y(y), 0.085 * s, col, a);
+            glow(ctx, X(xx), Y(y), (inFin ? 0.14 : 0.1) * s, col, a, 0.3);
           }
         }
         ctx.globalCompositeOperation = "source-over";
