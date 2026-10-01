@@ -7,17 +7,17 @@
     { "id": "eniac", "duration": 720, "cues": { "pull": 0, "burn1": 330, "burn2": 395, "burn3": 430, "dark": 620 } },
     { "id": "transistor", "duration": 750, "cues": { "chapter": 0, "appear": 110, "gate": 330, "shrink": 610 } },
     { "id": "litho", "duration": 630, "cues": { "beam": 40, "wafer": 300, "dive": 560 } },
-    { "id": "moore", "duration": 900, "cues": { "chapter": 0, "split": 200, "run": 345, "end": 760 } },
+    { "id": "moore", "duration": 900, "cues": { "chapter": 0, "split": 200, "run": 345, "year0": 395, "end": 760 } },
     { "id": "curve", "duration": 690, "cues": { "draw": 30, "spike": 150, "morph": 330, "line": 500 } },
     { "id": "nano", "duration": 690, "cues": { "zoom": 0, "atoms": 560 } },
     { "id": "wall", "duration": 690, "cues": { "chapter": 0, "draw": 100, "slam": 205, "heat": 330, "split": 500 } },
     { "id": "gpu", "duration": 960, "cues": { "chapter": 0, "cores": 100, "race": 360, "burst": 372, "matrix": 610 } },
-    { "id": "neural", "duration": 840, "cues": { "chapter": 0, "freeze": 270, "flood": 450 } },
-    { "id": "alexnet", "duration": 600, "cues": { "bars": 140, "drop": 250, "human": 420 } },
-    { "id": "converge", "duration": 600, "cues": { "chapter": 0, "streams": 90, "impact": 268 } },
-    { "id": "transformer", "duration": 690, "cues": { "attend": 60, "generate": 330, "users": 520 } },
-    { "id": "zoomout", "duration": 1020, "cues": { "start": 0, "rack": 420, "hall": 600, "earth": 840 } },
-    { "id": "compare", "duration": 780, "cues": { "zeros": 150, "gap": 420, "doubling": 560 } },
-    { "id": "finale", "duration": 900, "cues": { "chapter": 0, "climb": 330, "flash": 690, "end": 860 } }
+    { "id": "neural", "duration": 600, "cues": { "chapter": 0, "perceptron": 90, "freeze": 230, "flood": 360, "imagenet": 470 } },
+    { "id": "alexnet", "duration": 480, "cues": { "bars": 70, "drop": 185, "human": 320 } },
+    { "id": "converge", "duration": 420, "cues": { "chapter": 0, "streams": 70, "impact": 210 } },
+    { "id": "transformer", "duration": 540, "cues": { "attend": 30, "parallel": 280, "generate": 400, "users": 420 } },
+    { "id": "zoomout", "duration": 840, "cues": { "start": 0, "chip": 140, "server": 290, "rack": 380, "hall": 450, "city": 600, "earth": 690 } },
+    { "id": "compare", "duration": 630, "cues": { "zeros": 90, "gap": 330, "doubling": 450 } },
+    { "id": "finale", "duration": 810, "cues": { "chapter": 0, "climb": 330, "here": 485, "flash": 620, "end": 780 } }
   ]
 }

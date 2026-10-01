@@ -12,7 +12,7 @@ const DUR = sceneDuration("moore");
 const SPLIT = cue("moore", "split");
 const RUN = cue("moore", "run");
 const END = cue("moore", "end");
-const YEAR0 = RUN + 50;
+const YEAR0 = cue("moore", "year0"); // the year counter starts here (soundtrack ticks follow yearAt)
 const STEP = 18; // frames per doubling in the intro demo
 
 /** Displayed year during the run (accelerating). Exported for the soundtrack's tick math. */
