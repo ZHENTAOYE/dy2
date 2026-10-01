@@ -380,11 +380,15 @@ export const SceneBigBang: React.FC<{dur: number}> = ({dur}) => {
             chromatic(ctx, w, h, 40 * decay(t, BANG, 1.5) + inflation * 12 + 22 * decay(t, INF_END, 3));
           }}
         />
-        <CanvasLayer
-          draw={(ctx, w, h) => {
-            drawComparison(ctx, w, h, t, compA, u);
-          }}
-        />
+        {/* Unmounted when hidden: a transparent canvas that is only cleared can show its last
+            drawing in a full render (seen as the ring flickering back during t≈22.7–27). */}
+        {compA > 0.003 ? (
+          <CanvasLayer
+            draw={(ctx, w, h) => {
+              drawComparison(ctx, w, h, t, compA, u);
+            }}
+          />
+        ) : null}
       </Shake>
 
       <Statement from={0.6} to={3.3} text="138亿年前" theme="white" size={96} serif y={0.3} />
