@@ -666,7 +666,7 @@ export const SceneObservable: React.FC<{dur: number}> = ({dur}) => {
       <Statement from={BANG} to={28.0} text="直径约930亿光年" sub="THE OBSERVABLE UNIVERSE" theme="gold" size={124} serif slam />
       <Captions items={CAPTIONS} />
       <Flash amount={decay(t, BANG - 0.03, 5) * 1.0} />
-      <Fade amount={1 - smooth(0, 0.5, t) + smooth(dur - 0.5, dur, t) * 0} />
+      <Fade amount={1 - smooth(0, 0.5, t) + smooth(dur - 0.5, dur, t)} />
     </AbsoluteFill>
   );
 };

@@ -2,7 +2,7 @@ import React from 'react';
 import {useCurrentFrame, useVideoConfig} from 'remotion';
 import {SANS} from '../fonts';
 import {clamp, easeOutCubic, smooth} from '../lib/math';
-import {glyphStyle, parseRich} from './RichText';
+import {glyphStyle, parseRich, unbreakableRuns} from './RichText';
 
 export type Caption = {from: number; to: number; text: string};
 
@@ -23,7 +23,8 @@ export const Captions: React.FC<{items: Caption[]; bottom?: number; accent?: str
   return (
     <>
       {active.map((c) => {
-        const glyphs = parseRich(c.text);
+        // '|' marks a phrase break used only in portrait, where most lines need two rows.
+        const glyphs = parseRich(c.text.replace(/\|/g, portrait ? '\n' : ''));
         const out = smooth(c.to, c.to + 0.45, t);
         return (
           <div
@@ -44,29 +45,38 @@ export const Captions: React.FC<{items: Caption[]; bottom?: number; accent?: str
               opacity: 1 - out,
               filter: out > 0.01 ? `blur(${out * 8 * u}px)` : undefined,
               textShadow: `0 0 ${18 * u}px rgba(120,170,255,0.35), 0 ${2 * u}px ${6 * u}px rgba(0,0,0,0.9)`,
+              // Two-line captions (mostly portrait) split evenly instead of leaving one glyph behind.
+              textWrap: 'balance',
             }}
           >
-            {glyphs.map((g, i) => {
-              if (g.br) return <br key={i} />;
-              const st = c.from + i * 0.032;
-              const k = easeOutCubic(clamp((t - st) / 0.32));
+            {unbreakableRuns(glyphs).map((run) => {
+              if (glyphs[run[0]].br) return <br key={run[0]} />;
               return (
-                <span
-                  key={i}
-                  style={{
-                    display: 'inline-block',
-                    whiteSpace: 'pre',
-                    opacity: k,
-                    transform: `translateY(${(1 - k) * 16 * u}px)`,
-                    filter: k < 0.99 ? `blur(${(1 - k) * 6 * u}px)` : undefined,
-                    color: g.accent ? accent : undefined,
-                    textShadow: g.accent
-                      ? `0 0 ${20 * u}px rgba(255,190,90,0.6), 0 ${2 * u}px ${6 * u}px rgba(0,0,0,0.9)`
-                      : undefined,
-                    ...glyphStyle(g),
-                  }}
-                >
-                  {g.text}
+                <span key={run[0]} style={{display: 'inline-block', whiteSpace: 'nowrap'}}>
+                  {run.map((i) => {
+                    const g = glyphs[i];
+                    const st = c.from + i * 0.032;
+                    const k = easeOutCubic(clamp((t - st) / 0.32));
+                    return (
+                      <span
+                        key={i}
+                        style={{
+                          display: 'inline-block',
+                          whiteSpace: 'pre',
+                          opacity: k,
+                          transform: `translateY(${(1 - k) * 16 * u}px)`,
+                          filter: k < 0.99 ? `blur(${(1 - k) * 6 * u}px)` : undefined,
+                          color: g.accent ? accent : undefined,
+                          textShadow: g.accent
+                            ? `0 0 ${20 * u}px rgba(255,190,90,0.6), 0 ${2 * u}px ${6 * u}px rgba(0,0,0,0.9)`
+                            : undefined,
+                          ...glyphStyle(g),
+                        }}
+                      >
+                        {g.text}
+                      </span>
+                    );
+                  })}
                 </span>
               );
             })}

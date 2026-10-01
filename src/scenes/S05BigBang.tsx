@@ -2,7 +2,7 @@ import React from 'react';
 import {AbsoluteFill, useCurrentFrame, useVideoConfig} from 'remotion';
 import {CanvasLayer} from '../components/CanvasLayer';
 import {Captions} from '../components/Captions';
-import {ChapterTag, Fade, Flash, Pow10, Readout, Shake} from '../components/Chrome';
+import {ChapterTag, Flash, Pow10, Readout, Shake} from '../components/Chrome';
 import {Statement} from '../components/Statement';
 import {SANS} from '../fonts';
 import {
@@ -420,7 +420,7 @@ export const SceneBigBang: React.FC<{dur: number}> = ({dur}) => {
       <ChapterTag index="04" title="大爆炸与暴胀" en="THE BIG BANG & INFLATION" dur={dur} />
       <Captions items={CAPTIONS} />
       <Flash amount={decay(t, BANG - 0.03, 5) * 1.1 + decay(t, INF_END - 0.03, 6) * 0.7} />
-      <Fade amount={smooth(dur - 0.6, dur, t) * 0} />
+      {/* No fade-out: Main crossfades this scene into the CMB plasma (XFADE_IN.cmb). */}
     </AbsoluteFill>
   );
 };

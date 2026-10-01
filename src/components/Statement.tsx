@@ -38,7 +38,16 @@ export const Statement: React.FC<{
   const out = smooth(to, to + 0.7, t);
   const life = clamp((t - from) / Math.max(0.1, to - from));
   const drift = 1 + life * 0.04;
-  const fs = size * u * (portrait ? 0.82 : 1);
+  // Shrink to fit the frame width (portrait) instead of wrapping: estimate each
+  // line in em (CJK 1, Latin/digits 0.6, superscripts 0.35, plus letter-spacing)
+  // and leave room for the drift scale.
+  const lineEm = [0];
+  for (const g of glyphs) {
+    if (g.br) lineEm.push(0);
+    else lineEm[lineEm.length - 1] += (g.sup ? 0.35 : /^[\x20-\x7e]$/.test(g.text) ? 0.6 : 1) + 0.12;
+  }
+  const fitFs = (width - 80 * u) / (Math.max(...lineEm) * 1.04);
+  const fs = Math.min(size * u * (portrait ? 0.82 : 1), fitFs);
   return (
     <div
       style={{
@@ -60,6 +69,9 @@ export const Statement: React.FC<{
           fontSize: fs,
           lineHeight: 1.25,
           letterSpacing: `${0.12 + out * 0.3}em`,
+          // Never re-wrap while the exit letter-spacing grows; overflow stays centred.
+          whiteSpace: 'nowrap',
+          margin: `0 ${-width / 2}px`,
         }}
       >
         {glyphs.map((g, i) => {
@@ -100,7 +112,7 @@ export const Statement: React.FC<{
             letterSpacing: '0.55em',
             color: 'rgba(230,238,255,0.85)',
             opacity: smooth(from + 0.5, from + 1.3, t),
-            textShadow: `0 0 ${16 * u}px rgba(140,180,255,0.6)`,
+            textShadow: `0 ${2 * u}px ${8 * u}px rgba(0,0,0,0.85), 0 0 ${16 * u}px rgba(140,180,255,0.6)`,
           }}
         >
           {sub}

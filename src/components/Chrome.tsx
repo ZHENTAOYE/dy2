@@ -41,7 +41,7 @@ export const ChapterTag: React.FC<{index: string; title: string; en: string; dur
           fontWeight: 200,
           fontSize: 60 * u,
           color: 'rgba(255,255,255,0.92)',
-          textShadow: `0 0 ${18 * u}px rgba(120,180,255,0.7)`,
+          textShadow: `0 0 ${18 * u}px rgba(120,180,255,0.7), 0 ${2 * u}px ${8 * u}px rgba(0,0,0,0.6)`,
           letterSpacing: '0.05em',
         }}
       >
@@ -56,7 +56,7 @@ export const ChapterTag: React.FC<{index: string; title: string; en: string; dur
             fontSize: 34 * u,
             color: '#fff',
             letterSpacing: '0.18em',
-            textShadow: `0 0 ${14 * u}px rgba(120,180,255,0.6)`,
+            textShadow: `0 0 ${14 * u}px rgba(120,180,255,0.6), 0 ${1 * u}px ${4 * u}px rgba(0,0,0,0.6)`,
           }}
         >
           {title}
@@ -69,6 +69,7 @@ export const ChapterTag: React.FC<{index: string; title: string; en: string; dur
             color: 'rgba(190,215,255,0.8)',
             letterSpacing: '0.5em',
             marginTop: 6 * u,
+            textShadow: `0 ${1 * u}px ${6 * u}px rgba(0,0,0,0.7)`,
           }}
         >
           {en}
@@ -166,7 +167,8 @@ export const Shake: React.FC<{amount: number; children: React.ReactNode; zoom?: 
   const x = (hash1(frame * 1.37) - 0.5) * 2 * a;
   const y = (hash1(frame * 2.11 + 9) - 0.5) * 2 * a;
   const r = (hash1(frame * 0.73 + 3) - 0.5) * amount * 0.8;
-  const s = 1 + Math.abs(amount) * 0.03 + zoom;
+  // Overscale enough to cover the translation and rotation, so no black edge shows.
+  const s = 1 + Math.abs(amount) * 0.065 + zoom;
   return (
     <AbsoluteFill style={{transform: `translate(${x}px, ${y}px) rotate(${r}deg) scale(${s})`}}>
       {children}

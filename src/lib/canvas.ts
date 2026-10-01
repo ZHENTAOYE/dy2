@@ -102,10 +102,11 @@ export const chromatic = (ctx: Ctx, w: number, h: number, amount: number) => {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, w, h);
   ctx.globalCompositeOperation = 'lighter';
+  // No channel is drawn smaller than the frame, so the edges never lose a channel.
   const channels: [string, number][] = [
-    ['#ff0000', -amount],
-    ['#00ff00', 0],
-    ['#0000ff', amount],
+    ['#ff0000', 0],
+    ['#00ff00', amount],
+    ['#0000ff', 2 * amount],
   ];
   for (const [col, off] of channels) {
     t.globalCompositeOperation = 'copy';
