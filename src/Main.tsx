@@ -18,7 +18,7 @@ export const Main: React.FC<{withAudio?: boolean}> = ({withAudio = true}) => (
       </Sequence>
     ))}
     <FilmOverlay />
-    {withAudio ? <Audio src={staticFile('audio/soundtrack.wav')} /> : null}
+    {withAudio ? <Audio src={staticFile('audio/soundtrack.mp3')} /> : null}
   </AbsoluteFill>
 );
 
