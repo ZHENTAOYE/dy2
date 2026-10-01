@@ -14,6 +14,17 @@ export const cue = (scene: string, name: string): number => {
   return v;
 };
 
+/**
+ * Scene-relative frames of a rhythmic event series (e.g. digits slamming in, tokens being generated),
+ * from the optional `"ticks": { "<name>": [frames…] }` of a scene. The soundtrack puts a sound on each one.
+ */
+export const ticks = (scene: string, name: string): number[] => {
+  const s = SCENES.find((x) => x.id === scene) as { ticks?: Record<string, number[]> } | undefined;
+  const v = s?.ticks?.[name];
+  if (!v) throw new Error(`Unknown ticks ${scene}.${name}`);
+  return v;
+};
+
 export const sceneDuration = (scene: string) => {
   const s = SCENES.find((x) => x.id === scene);
   if (!s) throw new Error(`Unknown scene ${scene}`);
