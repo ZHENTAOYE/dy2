@@ -1,0 +1,93 @@
+{
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "durationInFrames": 6000,
+  "scenes": {
+    "open":       {"from": 0,    "duration": 480},
+    "entropy":    {"from": 465,  "duration": 900},
+    "stars":      {"from": 1350, "duration": 800},
+    "collapse":   {"from": 2130, "duration": 680},
+    "degenerate": {"from": 2790, "duration": 710},
+    "blackhole":  {"from": 3480, "duration": 1070},
+    "dark":       {"from": 4530, "duration": 770},
+    "epilogue":   {"from": 5280, "duration": 720}
+  },
+  "impacts": [
+    {"frame": 360,  "strength": 1.0,  "flash": 1.0,  "kind": "boom"},
+    {"frame": 1300, "strength": 0.45, "flash": 0.25, "kind": "hit"},
+    {"frame": 1350, "strength": 0.55, "flash": 0.5,  "kind": "whoosh"},
+    {"frame": 2335, "strength": 0.95, "flash": 1.0,  "kind": "boom"},
+    {"frame": 2700, "strength": 0.0,  "flash": 0.0,  "kind": "bell"},
+    {"frame": 3262, "strength": 0.6,  "flash": 0.45, "kind": "hit"},
+    {"frame": 3480, "strength": 1.0,  "flash": 0.9,  "kind": "boom"},
+    {"frame": 4400, "strength": 1.0,  "flash": 1.0,  "kind": "final"},
+    {"frame": 5135, "strength": 0.35, "flash": 0.0,  "kind": "sub"},
+    {"frame": 5340, "strength": 0.4,  "flash": 0.6,  "kind": "swell"}
+  ],
+  "risers": [
+    {"from": 270,  "to": 360},
+    {"from": 1240, "to": 1300},
+    {"from": 2255, "to": 2335},
+    {"from": 3400, "to": 3480},
+    {"from": 4150, "to": 4400},
+    {"from": 5290, "to": 5340}
+  ],
+  "logTime": [
+    [1380, 10.14], [1800, 10.14], [2110, 11.0],
+    [2160, 11.0], [2290, 12.3], [2450, 12.6], [2690, 14.0],
+    [2830, 14.0], [3100, 26.0], [3240, 34.0], [3470, 40.0],
+    [3500, 40.0], [3810, 46.0], [4120, 67.0], [4400, 100.0],
+    [4560, 100.0], [5100, 140.0],
+    [5330, 140.0], [5400, 10.14]
+  ],
+  "hud": {"in": 1375, "out": 5130, "epilogueIn": 5330, "epilogueOut": 5520},
+  "captions": [
+    {"in": 40,   "out": 150,  "zh": "宇宙会如何终结？", "en": "How will the universe end?"},
+    {"in": 165,  "out": 255,  "zh": "不是轰然一声巨响", "en": "Not with a bang"},
+    {"in": 260,  "out": 340,  "zh": "而是一声呜咽", "en": "but a whimper", "note": "—— T.S. 艾略特《空心人》"},
+
+    {"in": 500,  "out": 620,  "zh": "1865 年，克劳修斯提出了一个概念——熵", "en": "1865 · Rudolf Clausius names a new quantity: entropy"},
+    {"in": 630,  "out": 750,  "zh": "它衡量一个系统有多么“混乱”", "en": "A measure of disorder"},
+    {"in": 760,  "out": 890,  "zh": "热力学第二定律：孤立系统的熵，永不减少", "en": "The second law: in an isolated system, entropy never decreases"},
+    {"in": 905,  "out": 1030, "zh": "热量从高温流向低温，这股流动可以做功", "en": "Heat flows from hot to cold — and that flow can do work"},
+    {"in": 1040, "out": 1165, "zh": "可一旦处处温度相同，一切流动都将停止", "en": "But once everything is the same temperature, all flow stops"},
+    {"in": 1180, "out": 1255, "zh": "而宇宙，就是最大的孤立系统", "en": "And the universe is the ultimate isolated system"},
+    {"in": 1258, "out": 1296, "zh": "它注定走向的终点——", "en": "Its inevitable destination —"},
+
+    {"in": 1400, "out": 1530, "zh": "今天，宇宙 138 亿岁，群星璀璨", "en": "Today the universe is 13.8 billion years old, ablaze with stars"},
+    {"in": 1540, "out": 1670, "zh": "恒星燃烧核燃料，把有序的能量化作无序的光和热", "en": "Stars burn nuclear fuel, turning ordered energy into disordered light and heat"},
+    {"in": 1680, "out": 1800, "zh": "每一缕星光，都在推高宇宙的熵", "en": "Every ray of starlight raises the entropy of the cosmos"},
+    {"in": 1820, "out": 1950, "zh": "与此同时，宇宙正在加速膨胀", "en": "Meanwhile, space itself is expanding — faster and faster"},
+    {"in": 1960, "out": 2120, "zh": "约 1000 亿年后，本星系群以外的星系，都将退出我们的视界", "en": "In ~100 billion years, every galaxy beyond our Local Group slips past the horizon"},
+
+    {"in": 2160, "out": 2290, "zh": "星际气体终将耗尽，新的恒星不再诞生", "en": "The gas runs out. No new stars are born"},
+    {"in": 2340, "out": 2450, "zh": "大质量恒星，在超新星爆发中死去", "en": "Massive stars die in supernova explosions"},
+    {"in": 2460, "out": 2590, "zh": "最长寿的红矮星，也只能燃烧约十万亿年", "en": "Even the longest-lived red dwarfs burn for only ~10 trillion years"},
+    {"in": 2610, "out": 2780, "zh": "10¹⁴ 年，最后一颗恒星熄灭", "en": "10¹⁴ years: the last star goes out"},
+
+    {"in": 2830, "out": 2960, "zh": "宇宙只剩下恒星的残骸：白矮星、中子星、黑洞", "en": "Only stellar corpses remain: white dwarfs, neutron stars, black holes"},
+    {"in": 2970, "out": 3100, "zh": "偶然的近距离交会，把恒星一颗颗抛出星系", "en": "Rare close encounters fling stars out of the galaxy, one by one"},
+    {"in": 3110, "out": 3240, "zh": "如果质子会衰变，物质本身也将瓦解", "en": "If protons decay, matter itself will dissolve", "note": "质子寿命的实验下限：> 10³⁴ 年"},
+    {"in": 3255, "out": 3370, "zh": "原子化作光子、正电子与中微子", "en": "Atoms break down into photons, positrons and neutrinos"},
+    {"in": 3380, "out": 3470, "zh": "10⁴⁰ 年，普通物质荡然无存", "en": "10⁴⁰ years: ordinary matter is gone"},
+
+    {"in": 3530, "out": 3660, "zh": "宇宙进入黑洞纪元", "en": "The universe enters the Black Hole Era"},
+    {"in": 3670, "out": 3800, "zh": "黑洞，成了宇宙中最后的天体", "en": "Black holes are the last objects left"},
+    {"in": 3810, "out": 3930, "zh": "但它们，也并非永恒", "en": "But even they are not forever"},
+    {"in": 3940, "out": 4070, "zh": "霍金辐射：黑洞会极其缓慢地蒸发", "en": "Hawking radiation: black holes slowly evaporate"},
+    {"in": 4080, "out": 4220, "zh": "太阳质量的黑洞需要 10⁶⁷ 年，最大的黑洞约需 10¹⁰⁰ 年", "en": "A solar-mass black hole takes 10⁶⁷ years; the largest, about 10¹⁰⁰"},
+    {"in": 4230, "out": 4365, "zh": "黑洞越小，温度越高，蒸发得越快", "en": "The smaller it gets, the hotter it burns — and the faster it goes"},
+    {"in": 4430, "out": 4545, "zh": "10¹⁰⁰ 年，最后一个黑洞在闪光中消失", "en": "10¹⁰⁰ years: the last black hole vanishes in a flash"},
+
+    {"in": 4580, "out": 4710, "zh": "宇宙只剩下稀薄的光子与轻子", "en": "All that remains is a thin haze of photons and leptons"},
+    {"in": 4720, "out": 4850, "zh": "它们彼此相隔遥远，几乎永不相遇", "en": "So far apart they will almost never meet"},
+    {"in": 4860, "out": 4990, "zh": "温度无限趋近绝对零度，处处相同", "en": "The temperature sinks toward absolute zero — the same everywhere"},
+    {"in": 5000, "out": 5115, "zh": "没有温差，就没有流动；没有变化，时间也失去意义", "en": "No difference, no flow. No change — time loses its meaning"},
+
+    {"in": 5370, "out": 5490, "zh": "但此刻，宇宙才 138 亿岁", "en": "But right now, the universe is only 13.8 billion years old"},
+    {"in": 5500, "out": 5650, "zh": "如果宇宙的一生长达 10¹⁰⁰ 年，今天只走到了它的 10⁻⁹⁰", "en": "If its life spans 10¹⁰⁰ years, today is just 10⁻⁹⁰ of the way in"},
+    {"in": 5665, "out": 5785, "zh": "我们，正活在宇宙最明亮、最温暖的一瞬", "en": "We live in the brightest, warmest instant the universe will ever know"},
+    {"in": 5795, "out": 5895, "zh": "抬头看看星空吧——趁群星依然闪耀", "en": "So look up — while the stars still shine"}
+  ]
+}

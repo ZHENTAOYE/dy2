@@ -1,0 +1,26 @@
+{
+  "name": "heat-death-of-the-universe",
+  "version": "1.0.0",
+  "private": true,
+  "description": "宇宙热寂 — a Remotion science explainer, drawn and animated entirely in code",
+  "scripts": {
+    "studio": "remotion studio",
+    "audio": "node scripts/make-audio.mjs",
+    "render": "node scripts/make-audio.mjs && remotion render HeatDeath out/heat-death.mp4",
+    "still": "remotion still HeatDeath out/still.png"
+  },
+  "dependencies": {
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@fontsource/montserrat": "^5.3.0",
+    "@fontsource/noto-sans-sc": "^5.3.0",
+    "@fontsource/noto-serif-sc": "^5.3.0",
+    "@remotion/cli": "^4.0.531",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "remotion": "^4.0.531"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "typescript": "^7.0.2"
+  }
+}
