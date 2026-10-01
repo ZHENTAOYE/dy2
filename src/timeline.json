@@ -1,0 +1,46 @@
+{
+  "fps": 30,
+  "width": 1080,
+  "height": 1920,
+  "scenes": [
+    {"id": "hook", "duration": 270},
+    {"id": "human", "duration": 210},
+    {"id": "eniac", "duration": 330},
+    {"id": "i4004", "duration": 300},
+    {"id": "cpu", "duration": 510},
+    {"id": "dilation", "duration": 540},
+    {"id": "gpu", "duration": 510},
+    {"id": "super", "duration": 480},
+    {"id": "finale", "duration": 900}
+  ],
+  "impacts": [
+    {"scene": "hook", "frame": 44, "power": 0.55},
+    {"scene": "hook", "frame": 168, "power": 0.5},
+    {"scene": "human", "frame": 120, "power": 0.25},
+    {"scene": "eniac", "frame": 196, "power": 0.6},
+    {"scene": "i4004", "frame": 182, "power": 0.65},
+    {"scene": "cpu", "frame": 120, "power": 0.5},
+    {"scene": "cpu", "frame": 300, "power": 0.8},
+    {"scene": "cpu", "frame": 430, "power": 0.75},
+    {"scene": "dilation", "frame": 130, "power": 0.4},
+    {"scene": "dilation", "frame": 225, "power": 0.5},
+    {"scene": "dilation", "frame": 330, "power": 0.85},
+    {"scene": "dilation", "frame": 450, "power": 0.7},
+    {"scene": "gpu", "frame": 8, "power": 0.6},
+    {"scene": "gpu", "frame": 430, "power": 0.9},
+    {"scene": "super", "frame": 150, "power": 0.6},
+    {"scene": "super", "frame": 300, "power": 1.0},
+    {"scene": "finale", "frame": 250, "power": 0.6},
+    {"scene": "finale", "frame": 560, "power": 0.9},
+    {"scene": "finale", "frame": 702, "power": 1.0},
+    {"scene": "finale", "frame": 820, "power": 0.7}
+  ],
+  "ladder": [
+    {"scene": "human", "frame": 120, "exp": 0, "label": "你·心算"},
+    {"scene": "eniac", "frame": 196, "exp": 3.7, "label": "ENIAC"},
+    {"scene": "i4004", "frame": 182, "exp": 4.96, "label": "4004"},
+    {"scene": "cpu", "frame": 430, "exp": 11.5, "label": "CPU"},
+    {"scene": "gpu", "frame": 430, "exp": 15, "label": "AI 芯片"},
+    {"scene": "super", "frame": 300, "exp": 18.23, "label": "超算"}
+  ]
+}
