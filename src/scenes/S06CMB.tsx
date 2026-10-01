@@ -14,11 +14,11 @@ import {drawCover, drawStars3, makeStars3, nebulaTexture} from '../lib/space';
 const CLEAR = 12.0;
 
 const CAPTIONS = [
-  {from: 0.5, to: 4.4, text: '最初的38万年里，宇宙是一锅炽热、浑浊的【等离子体】'},
+  {from: 0.5, to: 4.4, text: '最初的38万年里，|宇宙是一锅炽热、浑浊的【等离子体】'},
   {from: 4.7, to: 8.4, text: '光子不断被自由电子散射，寸步难行'},
-  {from: 8.7, to: 11.8, text: '直到宇宙冷却到约3000 K，电子被原子核捕获——'},
-  {from: 16.0, to: 20.0, text: '那一刻释放的光，穿越138亿年，至今仍充满整个宇宙'},
-  {from: 20.3, to: 25.4, text: '它就是【宇宙微波背景辐射】，如今温度只有2.725 K'},
+  {from: 8.7, to: 11.8, text: '直到宇宙冷却到约3000 K，|电子被原子核捕获——'},
+  {from: 16.0, to: 20.0, text: '那一刻释放的光，穿越138亿年，|至今仍充满整个宇宙'},
+  {from: 20.3, to: 25.4, text: '它就是【宇宙微波背景辐射】，|如今温度只有2.725 K'},
 ];
 
 // ---------------------------------------------------------------------------
@@ -286,18 +286,25 @@ export const SceneCMB: React.FC<{dur: number}> = ({dur}) => {
               // Labels for the first seconds.
               const lab = win(t, 1.2, 8.4, 0.6, 0.6);
               if (lab > 0) {
+                f.save();
                 f.globalCompositeOperation = 'source-over';
                 f.font = font(26 * u, 500);
-                f.fillStyle = `rgba(255,250,230,${lab})`;
-                f.fillText('光子 γ', hx + 26 * u, hy - 18 * u);
-                const p0 = P[3];
-                const lx = wrap(p0.px + t * 0.004) * w;
-                const ly = wrap(p0.py) * h;
-                f.fillStyle = `rgba(255,190,170,${lab})`;
-                f.fillText('质子 p⁺', lx + 16 * u, ly - 10 * u);
+                // Dark outline so photon trails and bright plasma don't scribble over the text.
+                f.lineJoin = 'round';
+                f.lineWidth = 6 * u;
+                f.strokeStyle = `rgba(40,10,4,${0.7 * lab})`;
+                const label = (s: string, x: number, y: number, rgb: string) => {
+                  f.strokeText(s, x, y);
+                  f.fillStyle = `rgba(${rgb},${lab})`;
+                  f.fillText(s, x, y);
+                };
+                label('光子 γ', hx + 26 * u, hy - 18 * u, '255,250,230');
+                // P[34] stays clear of the frame edges, the caption band and the hero photon in both layouts.
+                const p0 = P[34];
+                label('质子 p⁺', wrap(p0.px + t * 0.004) * w + 16 * u, wrap(p0.py) * h - 10 * u, '255,190,170');
                 const p1 = P[7];
-                f.fillStyle = `rgba(160,205,255,${lab})`;
-                f.fillText('电子 e⁻', wrap(p1.ex + t * 0.006) * w + 16 * u, wrap(p1.ey) * h + 26 * u);
+                label('电子 e⁻', wrap(p1.ex + t * 0.006) * w + 16 * u, wrap(p1.ey) * h + 26 * u, '160,205,255');
+                f.restore();
               }
               // Carve the transparency wave.
               if (t > CLEAR - 0.05) {
@@ -346,7 +353,7 @@ export const SceneCMB: React.FC<{dur: number}> = ({dur}) => {
 
             // ----- The CMB sphere -----
             if (sphereA > 0) {
-              const R = S * lerp(0.2, 0.36, easeOutCubic(smooth(15.6, 19, t)));
+              const R = S * lerp(0.2, 0.345, easeOutCubic(smooth(15.6, 19, t)));
               drawCMBSphere(ctx, cx, cy * 0.96, R, t * 0.22, sphereA);
             }
             bloom2(ctx, w, h, 0.5 + 0.9 * decay(t, CLEAR, 1.5) + 0.2 * sphereA);

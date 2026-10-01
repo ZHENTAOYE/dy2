@@ -205,7 +205,9 @@ const grainTile = () => {
   return c;
 };
 
-export const FilmOverlay: React.FC<{grain?: number}> = ({grain = 0.06}) => {
+// Grain is temporal noise and dominates the bitrate: 0.06 @ crf 16 encoded at
+// 11–19 Mbps; 0.04 @ crf 18 looks the same at roughly half the size.
+export const FilmOverlay: React.FC<{grain?: number}> = ({grain = 0.04}) => {
   const frame = useCurrentFrame();
   return (
     <>

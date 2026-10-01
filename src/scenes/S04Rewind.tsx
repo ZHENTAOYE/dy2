@@ -12,8 +12,8 @@ import {drawCover, drawStars3, makeStars3, nebulaTexture} from '../lib/space';
 
 const CAPTIONS = [
   {from: 0.4, to: 3.4, text: '让时间倒流……'},
-  {from: 3.7, to: 7.2, text: '星系彼此靠近，宇宙越来越小、越来越密'},
-  {from: 7.5, to: 10.8, text: '温度飙升至数十亿度，原子被撕碎成基本粒子'},
+  {from: 3.7, to: 7.2, text: '星系彼此靠近，|宇宙越来越小、越来越密'},
+  {from: 7.5, to: 10.8, text: '温度飙升至数十亿度，|原子被撕碎成基本粒子'},
   {from: 11.0, to: 13.4, text: '直到一切，回到最初的那一刻'},
 ];
 
@@ -229,7 +229,11 @@ export const SceneRewind: React.FC<{dur: number}> = ({dur}) => {
                 letterSpacing: '0.2em',
                 color: '#ffcf7a',
                 opacity: (1 - collapse) * 0.95,
-                textShadow: '0 0 16px rgba(255,170,80,0.8)',
+                // Dark halo so it stays legible on the white-hot plasma; padding/margin keep the text in place.
+                padding: '12px 44px',
+                margin: '-12px -44px',
+                background: 'radial-gradient(closest-side, rgba(20,6,0,0.6), rgba(20,6,0,0.3) 55%, rgba(20,6,0,0.08) 85%, rgba(20,6,0,0))',
+                textShadow: '0 0 4px rgba(0,0,0,0.9), 0 2px 10px rgba(0,0,0,0.85), 0 0 16px rgba(255,170,80,0.35)',
               }}
             >
               ◂ {milestone[1]}

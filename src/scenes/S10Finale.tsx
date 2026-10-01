@@ -29,11 +29,11 @@ const BANG = 20.4;
 const H = 0.11; // expansion rate of the toy de Sitter universe (1/s)
 
 const CAPTIONS = [
-  {from: 0.5, to: 4.3, text: '如今，最遥远的星系正以【超光速】远离我们'},
-  {from: 4.6, to: 8.2, text: '这并不违反相对论：不是星系在空间中飞驰，而是空间本身在膨胀'},
-  {from: 8.5, to: 12.0, text: '它们此刻发出的光，将【永远】无法抵达地球'},
-  {from: 12.3, to: 16.4, text: '千亿年后，本星系群之外的星系，都将从夜空中消失'},
-  {from: 16.7, to: 20.0, text: '但此刻，我们仍能看见宇宙138亿年的过去'},
+  {from: 0.5, to: 4.3, text: '如今，最遥远的星系|正以【超光速】远离我们'},
+  {from: 4.6, to: 8.2, text: '这并不违反相对论：不是星系|在空间中飞驰，而是空间本身在膨胀'},
+  {from: 8.5, to: 12.0, text: '它们此刻发出的光，|将【永远】无法抵达地球'},
+  {from: 12.3, to: 16.4, text: '千亿年后，本星系群之外的星系，|都将从夜空中消失'},
+  {from: 16.7, to: 20.0, text: '但此刻，我们仍能看见|宇宙138亿年的过去'},
 ];
 
 type Gal = {r: number; a: number; s: number; rot: number; seed: number; tilt: number};
@@ -81,6 +81,11 @@ const drawHorizon = (ctx: Ctx, w: number, h: number, t: number, alpha: number, u
   const cy = h / 2;
   const RH = S * 0.3;
   const a = Math.exp(H * t);
+  // Caption band (matches Captions' box): dim galaxies and arrows that would run through the subtitle.
+  const portrait = h > w;
+  const capBot = h * (portrait ? 0.84 : 0.9) + 10 * u;
+  const capTop = capBot - (portrait ? 170 : 90) * u;
+  const capHalf = w * (portrait ? 0.43 : 0.4);
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.globalCompositeOperation = 'lighter';
@@ -93,14 +98,16 @@ const drawHorizon = (ctx: Ctx, w: number, h: number, t: number, alpha: number, u
     const v = rEll / RH; // recession speed in units of c
     const red = clamp((v - 0.6) / 1.2);
     const gone = fade * clamp(0.3 + v * 0.5);
-    const al = (1 - gone) * clamp(1.4 - v * 0.25);
+    const L = Math.min(80 * u, v * 30 * u);
+    const ux = (x - cx) / Math.max(1, Math.hypot(x - cx, y - cy));
+    const uy = (y - cy) / Math.max(1, Math.hypot(x - cx, y - cy));
+    const tipY = y + uy * (20 * u + L);
+    const gap = Math.max(capTop - Math.max(y, tipY), Math.min(y, tipY) - capBot, Math.abs(x - cx) - capHalf);
+    const al = (1 - gone) * clamp(1.4 - v * 0.25) * lerp(0.2, 1, clamp(gap / (40 * u)));
     if (al <= 0.01) continue;
     drawGalaxy(ctx, galaxySprite(g.seed, 'spiral', 128, 2000), x, y, 34 * u * g.s, g.rot, g.tilt, al);
     const col: RGB = mix3([255, 240, 200], [255, 60, 50], red);
     if (v > 0.15) {
-      const L = Math.min(80 * u, v * 30 * u);
-      const ux = (x - cx) / Math.max(1, Math.hypot(x - cx, y - cy));
-      const uy = (y - cy) / Math.max(1, Math.hypot(x - cx, y - cy));
       drawArrow(ctx, x + ux * 20 * u, y + uy * 20 * u, x + ux * (20 * u + L), y + uy * (20 * u + L), `rgba(${col[0]},${col[1] | 0},${col[2] | 0},${0.75 * al})`, 2.2 * u, 9 * u);
     }
     if (fade > 0) drawGlow(ctx, x, y, 22 * u, [255, 50, 40], fade * al * 0.6);
@@ -152,13 +159,15 @@ const drawHorizon = (ctx: Ctx, w: number, h: number, t: number, alpha: number, u
   ctx.fillStyle = 'rgba(255,120,100,0.95)';
   ctx.fillText('外：快于光速', cx, cy + RH * 0.62 + 40 * u);
   ctx.restore();
+  // "Us" leaves before the lone merged galaxy fills the centre.
+  const meA = alpha * (1 - smooth(12.6, 13.4, t));
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  drawGlow(ctx, cx, cy, 30 * u, [120, 230, 255], alpha);
-  drawRing(ctx, cx, cy, 16 * u, 2.5 * u, [140, 230, 255], alpha);
+  drawGlow(ctx, cx, cy, 30 * u, [120, 230, 255], meA);
+  drawRing(ctx, cx, cy, 16 * u, 2.5 * u, [140, 230, 255], meA);
   ctx.restore();
   ctx.save();
-  ctx.globalAlpha = alpha;
+  ctx.globalAlpha = meA;
   ctx.font = font(22 * u, 500);
   ctx.fillStyle = 'rgba(150,235,255,0.95)';
   ctx.fillText('我们', cx + 24 * u, cy + 8 * u);
@@ -170,6 +179,7 @@ export const SceneFinale: React.FC<{dur: number}> = ({dur}) => {
   const {fps, width, height} = useVideoConfig();
   const t = frame / fps;
   const u = Math.min(width, height) / 1080;
+  const portrait = height > width;
   const horizonA = 1 - smooth(15.6, 16.6, t);
   const fade = smooth(12.4, 15.6, t);
   const lonely = win(t, 13.2, 17.4, 1.2, 0.8);
@@ -348,24 +358,25 @@ export const SceneFinale: React.FC<{dur: number}> = ({dur}) => {
           style={{
             fontFamily: SERIF,
             fontWeight: 900,
-            fontSize: 70 * u,
+            fontSize: (portrait ? 62 : 70) * u,
+            lineHeight: portrait ? 1.4 : undefined,
             letterSpacing: '0.16em',
             color: '#f6f1e6',
             textShadow: `0 0 ${30 * u}px rgba(255,200,140,0.6), 0 ${2 * u}px ${12 * u}px rgba(0,0,0,0.9)`,
             transform: `scale(${1 + (t - 26.6) * 0.006})`,
           }}
         >
-          而我们，是宇宙认识自己的一种方式
+          而我们，{portrait ? <br /> : null}是宇宙认识自己的一种方式
         </div>
         <div
           style={{
             marginTop: 30 * u,
             fontFamily: SANS,
-            fontWeight: 300,
+            fontWeight: 500,
             fontSize: 30 * u,
             letterSpacing: '0.3em',
             color: 'rgba(240,235,225,0.92)',
-            textShadow: `0 ${2 * u}px ${10 * u}px rgba(0,0,0,0.95)`,
+            textShadow: `0 0 ${12 * u}px rgba(0,0,0,0.85), 0 ${2 * u}px ${10 * u}px rgba(0,0,0,0.95)`,
             opacity: smooth(27.6, 28.6, t),
           }}
         >
@@ -389,8 +400,8 @@ export const SceneFinale: React.FC<{dur: number}> = ({dur}) => {
       >
         ALL VISUALS PROCEDURALLY GENERATED · REMOTION
       </div>
-      <Captions items={CAPTIONS} />
       <Flash amount={decay(t, BANG - 0.03, 2.4) * 1.3 + rush * rush * rush * 0.5} />
+      <Captions items={CAPTIONS} />
       <Fade amount={1 - smooth(0, 0.5, t) + smooth(dur - 1.4, dur - 0.1, t)} />
     </AbsoluteFill>
   );

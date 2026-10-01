@@ -13,33 +13,49 @@ import {drawCover, makeCosmicWeb, nebulaTexture} from '../lib/space';
 
 const CAPTIONS = [
   {from: 0.5, to: 4.0, text: '随后，宇宙陷入了漫长的【黑暗时代】'},
-  {from: 4.3, to: 8.3, text: '约1亿到2亿年后，引力把气体聚拢——【第一代恒星】点燃了'},
+  {from: 4.3, to: 8.3, text: '约1亿到2亿年后，|引力把气体聚拢——【第一代恒星】点燃了'},
   {from: 8.6, to: 12.0, text: '恒星聚成星系，星系又汇成星系团'},
-  {from: 12.3, to: 16.0, text: '它们沿着暗物质的骨架，编织出一张横跨宇宙的巨网'},
-  {from: 20.3, to: 23.6, text: '而这张网的“网眼”，至今仍在不断被拉大'},
+  {from: 12.3, to: 16.0, text: '它们沿着暗物质的骨架，|编织出一张横跨宇宙的巨网'},
+  {from: 20.3, to: 23.6, text: '而这张网的“网眼”，|至今仍在不断被拉大'},
 ];
 
 const WEB_IN = 9.4;
 const FLY = 16.3;
 
-const attractors = () =>
-  memo('web-attractors', () => {
+// Keep-out boxes in screen fractions (50-100px margin): caption band, ChapterTag, Readout. Tested unzoomed and
+// at the 1.12x the ignitions build up to (corner stars drift outward between the two); the caption band runs
+// to the bottom edge so no star rises through it on the zoom-out. Both layouts still reach all 44 points.
+const KEEP_OUT: Record<'land' | 'port', [number, number, number, number][]> = {
+  land: [[0.15, 0.79, 0.85, 1], [0, 0, 0.41, 0.2], [0.72, 0.16, 1, 0.38]],
+  port: [[0, 0.72, 1, 1], [0, 0, 0.7, 0.16], [0.58, 0.215, 1, 0.325]],
+};
+
+// Positions only: ignition k keeps ignitionTimes()[k] (and its soundtrack ping) in both layouts.
+const attractors = (portrait: boolean) =>
+  memo(`web-attractors-${portrait ? 'p' : 'l'}`, () => {
     const r = mulberry32(141);
+    const keep = KEEP_OUT[portrait ? 'port' : 'land'];
     const pts: [number, number][] = [];
     let guard = 0;
     while (pts.length < 44 && guard++ < 5000) {
       const x = 0.08 + r() * 0.84;
       const y = 0.12 + r() * 0.76;
+      const blocked = [1, 1.12].some((z) => {
+        const X = 0.5 + (x - 0.5) * z;
+        const Y = 0.5 + (y - 0.5) * z;
+        return keep.some(([a, b, c, d]) => X >= a && X <= c && Y >= b && Y <= d);
+      });
+      if (blocked) continue;
       if (pts.every(([a, b]) => Math.hypot((a - x) * 1.78, b - y) > 0.12)) pts.push([x, y]);
     }
     // Ignite roughly from the centre outwards.
     return pts.sort((a, b) => Math.hypot(a[0] - 0.5, a[1] - 0.5) - Math.hypot(b[0] - 0.5, b[1] - 0.5));
   });
 
-const gas = () =>
-  memo('web-gas', () => {
+const gas = (portrait: boolean) =>
+  memo(`web-gas-${portrait ? 'p' : 'l'}`, () => {
     const r = mulberry32(143);
-    const A = attractors();
+    const A = attractors(portrait);
     return Array.from({length: 4200}, () => {
       const x = r();
       const y = r();
@@ -118,11 +134,13 @@ export const SceneWeb: React.FC<{dur: number}> = ({dur}) => {
                 contrast: 2.0,
                 mask: 0.5,
               });
-              drawCover(ctx, dark, w, h, 1.1, t * 0.01, 0.8);
+              // Undo the pull-back for the backdrop so its rotated edges never come into frame.
+              drawCover(ctx, dark, w, h, 1.1 / zoomOut, t * 0.01, 0.8);
               ctx.globalCompositeOperation = 'lighter';
-              const A = attractors();
+              const portrait = h > w;
+              const A = attractors(portrait);
               const collapse = easeInOutCubic(smooth(1.0, 7.0, t));
-              for (const g of gas()) {
+              for (const g of gas(portrait)) {
                 const [ax, ay] = A[g.k];
                 const x = lerp(g.x, ax + g.ox, collapse * 0.9) * w;
                 const y = lerp(g.y, ay + g.oy, collapse * 0.9) * h;

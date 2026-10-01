@@ -68,7 +68,8 @@ export const Statement: React.FC<{
           fontWeight: 900,
           fontSize: fs,
           lineHeight: 1.25,
-          letterSpacing: `${0.12 + out * 0.3}em`,
+          // Portrait is width-bound: a smaller exit spread keeps the outer glyphs in frame.
+          letterSpacing: `${0.12 + out * (portrait ? 0.1 : 0.3)}em`,
           // Never re-wrap while the exit letter-spacing grows; overflow stays centred.
           whiteSpace: 'nowrap',
           margin: `0 ${-width / 2}px`,

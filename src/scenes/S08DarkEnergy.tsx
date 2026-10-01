@@ -26,11 +26,11 @@ const SN = 1.5;
 const ACCEL = 8.5;
 
 const CAPTIONS = [
-  {from: 0.5, to: 4.2, text: '1998年，两个天文团队观测遥远的【Ia型超新星】'},
-  {from: 4.5, to: 8.2, text: '人们原以为，引力会让宇宙的膨胀逐渐【减速】'},
+  {from: 0.5, to: 4.2, text: '1998年，两个天文团队|观测遥远的【Ia型超新星】'},
+  {from: 4.5, to: 8.2, text: '人们原以为，|引力会让宇宙的膨胀逐渐【减速】'},
   {from: 12.1, to: 15.8, text: '推动加速的神秘力量，被称为【暗能量】'},
-  {from: 16.1, to: 19.8, text: '暗能量约占宇宙的68%，暗物质约占27%'},
-  {from: 20.1, to: 23.6, text: '而我们熟悉的一切普通物质，只占约【5%】'},
+  {from: 16.1, to: 19.8, text: '暗能量约占宇宙的68%，|暗物质约占27%'},
+  {from: 20.1, to: 23.6, text: '而我们熟悉的一切普通物质，|只占约【5%】'},
 ];
 
 // Scale factor: ΛCDM (accelerating) vs a matter-only universe matched early on.
@@ -114,7 +114,8 @@ const drawGraph = (ctx: Ctx, w: number, h: number, t: number, alpha: number, u: 
     ctx.setLineDash([]);
     ctx.font = font(28 * u, 500);
     ctx.fillStyle = `rgba(150,200,255,${smooth(6.8, 7.6, t)})`;
-    ctx.fillText('预期：减速膨胀', X(1.08), Y(aM(1.4)) + 50 * u);
+    // Anchored under the curve at the label's left end, where the rising curve is lowest.
+    ctx.fillText('预期：减速膨胀', X(1.08), Y(aM(1.08)) + 44 * u);
   }
   // Observed: accelerating.
   const ak = easeInOutCubic(clamp((t - ACCEL) / 2.0));
@@ -168,7 +169,7 @@ const drawDonut = (ctx: Ctx, w: number, h: number, t: number, alpha: number, u: 
   if (alpha <= 0.003) return;
   const S = Math.min(w, h);
   const cx = portrait ? w / 2 : w * 0.36;
-  const cy = portrait ? h * 0.42 : h * 0.47;
+  const cy = portrait ? h * 0.34 : h * 0.47;
   const R = S * 0.27;
   const lw = S * 0.075;
   const sweep = easeInOutCubic(clamp((t - 16.0) / 2.2));
@@ -329,7 +330,7 @@ export const SceneDarkEnergy: React.FC<{dur: number}> = ({dur}) => {
           style={{
             position: 'absolute',
             left: portrait ? '12%' : '60%',
-            top: portrait ? '62%' : '28%',
+            top: portrait ? '54%' : '28%',
             fontFamily: SANS,
             opacity: donutA,
           }}
@@ -351,7 +352,7 @@ export const SceneDarkEnergy: React.FC<{dur: number}> = ({dur}) => {
                   display: 'flex',
                   alignItems: 'baseline',
                   gap: 24 * u,
-                  marginBottom: 26 * u,
+                  marginBottom: (portrait ? 16 : 26) * u,
                   opacity: k * dim,
                   transform: `translateX(${(1 - k) * 40 * u}px) scale(${pop})`,
                   transformOrigin: 'left center',
@@ -361,9 +362,9 @@ export const SceneDarkEnergy: React.FC<{dur: number}> = ({dur}) => {
                   style={{
                     fontFamily: LATIN,
                     fontWeight: 700,
-                    fontSize: 92 * u,
+                    fontSize: (portrait ? 74 : 92) * u,
                     color,
-                    minWidth: 220 * u,
+                    minWidth: (portrait ? 180 : 220) * u,
                     textAlign: 'right',
                     textShadow: `0 0 ${26 * u}px ${color}`,
                     fontVariantNumeric: 'tabular-nums',
@@ -391,7 +392,7 @@ export const SceneDarkEnergy: React.FC<{dur: number}> = ({dur}) => {
       ) : null}
 
       <ChapterTag index="07" title="加速膨胀" en="ACCELERATING EXPANSION" dur={dur} />
-      <Statement from={ACCEL} to={11.8} text="膨胀，正在加速！" theme="red" size={110} serif slam y={0.86} />
+      <Statement from={ACCEL} to={11.5} text="膨胀，正在加速！" theme="red" size={110} serif slam y={0.86} />
       <Statement from={12.1} to={15.6} text="暗能量" sub="DARK ENERGY" theme="violet" size={180} serif y={0.44} />
       <Captions items={CAPTIONS} />
       <Flash amount={decay(t, SN - 0.03, 5) * 0.7 + decay(t, ACCEL - 0.03, 6) * 0.6} />

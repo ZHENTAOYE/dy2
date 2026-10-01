@@ -22,11 +22,11 @@ import {gauss, mulberry32} from '../lib/rng';
 import {drawCover, nebulaTexture, starDustTexture} from '../lib/space';
 
 const CAPTIONS = [
-  {from: 0.6, to: 4.4, text: '1929年，天文学家【哈勃】发现了一个奇怪的现象'},
-  {from: 4.8, to: 8.6, text: '几乎所有遥远星系的光，都在向【红色】一端偏移'},
-  {from: 9.0, to: 13.0, text: '光源远离我们时，光波被拉长、颜色变红——这就是【红移】'},
-  {from: 13.5, to: 17.4, text: '更惊人的是：星系越远，远离我们的速度就越快'},
-  {from: 17.8, to: 21.6, text: '距离每增加326万光年，退行速度就增加约【70公里/秒】'},
+  {from: 0.6, to: 4.4, text: '1929年，天文学家【哈勃】|发现了一个奇怪的现象'},
+  {from: 4.8, to: 8.6, text: '几乎所有遥远星系的光，|都在向【红色】一端偏移'},
+  {from: 9.0, to: 13.0, text: '光源远离我们时，光波被拉长、|颜色变红——这就是【红移】'},
+  {from: 13.5, to: 17.4, text: '更惊人的是：星系越远，|远离我们的速度就越快'},
+  {from: 17.8, to: 21.6, text: '距离每增加326万光年，|退行速度就增加约【70公里/秒】'},
 ];
 
 type FieldGal = {ang: number; d: number; v: number; seed: number; size: number; rot: number; kind: 'spiral' | 'barred' | 'elliptical'};
@@ -266,7 +266,7 @@ export const SceneHubble: React.FC<{dur: number}> = ({dur}) => {
               const nm2 = lerp(470, 680, k);
               const phase = t * 7;
               // Sources.
-              const srcX2 = x0 - k * w * 0.08;
+              const srcX2 = x0 - k * w * (portrait ? 0.04 : 0.08);
               ctx.save();
               ctx.globalCompositeOperation = 'lighter';
               const gs = galaxySprite(320, 'spiral', 256, 7000);
@@ -286,7 +286,7 @@ export const SceneHubble: React.FC<{dur: number}> = ({dur}) => {
               ctx.font = font(26 * u, 300);
               ctx.fillStyle = 'rgba(220,230,255,0.9)';
               ctx.fillText('静止的光源', x0 - 20 * u, y1 - 90 * u);
-              ctx.fillText('远离中的光源', x0 - 20 * u, y2 - 90 * u);
+              ctx.fillText('远离中的光源', srcX2 - 20 * u, y2 - 90 * u);
               ctx.font = font(32 * u, 500);
               const c2 = wavelengthRGB(nm2);
               ctx.fillStyle = `rgb(${c2[0]},${c2[1]},${c2[2]})`;
@@ -295,23 +295,28 @@ export const SceneHubble: React.FC<{dur: number}> = ({dur}) => {
               ctx.font = font(24 * u, 300);
               ctx.fillText('观测者', x1 - 10 * u, (y1 + y2) / 2 + 80 * u);
               ctx.restore();
-              drawArrow(ctx, srcX2 - 70 * u, y2 + 70 * u, srcX2 - 70 * u - 120 * u * k - 20 * u, y2 + 70 * u, `rgba(255,140,120,${aB})`, 3 * u, 12 * u);
+              // Under the galaxy, so the head stays on screen at k=1 (tip ≥ ~40u).
+              drawArrow(ctx, srcX2, y2 + 70 * u, srcX2 - 30 * u - 60 * u * k, y2 + 70 * u, `rgba(255,140,120,${aB})`, 3 * u, 12 * u);
             }
 
             // ---------- Phase C/D: Hubble diagram + receding field ----------
             const fieldA = smooth(13.3, 14.3, t);
             if (fieldA > 0) {
-              const fx = lerp(portrait ? w / 2 : w * 0.72, w / 2, easeInOutCubic(finale));
-              const fy = lerp(portrait ? h * 0.67 : h * 0.47, h * 0.5, easeInOutCubic(finale));
-              const scaleR = lerp(portrait ? w * 0.42 : h * 0.4, S * 0.55, finale);
+              // Sized so every arrow head stays in frame, clear of the graph (L) and the 2-line caption band (P).
+              const fx = lerp(portrait ? w / 2 : w * 0.68, w / 2, easeInOutCubic(finale));
+              const fy = lerp(portrait ? h * 0.59 : h * 0.47, h * 0.5, easeInOutCubic(finale));
+              const scaleR = lerp(S * 0.3, S * 0.55, finale);
+              const arrowF = lerp(portrait ? 0.35 : 0.55, 0.55, finale);
               const tilt = lerp(0.55, 0.85, finale);
               // Expansion factor: gentle, then runaway at the finale.
               const a = 1 + 0.12 * smooth(14, 21, t) + 2.8 * Math.pow(finale, 2.2);
+              // Marker + label clear out before the Statement slams in at 22.0.
+              const mw = fieldA * (1 - smooth(21.3, 21.9, t));
               ctx.save();
               ctx.globalCompositeOperation = 'lighter';
               // Milky Way marker at the centre.
-              drawGlow(ctx, fx, fy, 40 * u, [120, 210, 255], fieldA);
-              ctx.strokeStyle = `rgba(120,210,255,${0.8 * fieldA})`;
+              drawGlow(ctx, fx, fy, 40 * u, [120, 210, 255], mw);
+              ctx.strokeStyle = `rgba(120,210,255,${0.8 * mw})`;
               ctx.lineWidth = 2 * u;
               ctx.beginPath();
               ctx.ellipse(fx, fy, 26 * u, 26 * u * tilt, 0, 0, Math.PI * 2);
@@ -349,7 +354,7 @@ export const SceneHubble: React.FC<{dur: number}> = ({dur}) => {
                 drawGlow(ctx, px, py, 50 * u, col, flash * 0.9);
                 const arrowK = smooth(15.2, 16.6, t) * al;
                 if (arrowK > 0) {
-                  const L = g.v * scaleR * 0.55 * (1 + 1.5 * finale);
+                  const L = g.v * scaleR * arrowF * (1 + 1.5 * finale);
                   drawArrow(
                     ctx,
                     px + Math.cos(g.ang) * 28 * u,
@@ -364,10 +369,13 @@ export const SceneHubble: React.FC<{dur: number}> = ({dur}) => {
               });
               ctx.restore();
               ctx.save();
-              ctx.globalAlpha = fieldA * (1 - finale);
+              ctx.globalAlpha = mw;
               ctx.font = font(22 * u, 500);
               ctx.fillStyle = 'rgba(150,215,255,0.95)';
               ctx.textAlign = 'center';
+              // The compact field puts the nearest galaxies right beside the label.
+              ctx.shadowColor = 'rgba(0,0,0,0.9)';
+              ctx.shadowBlur = 8 * u;
               ctx.fillText('银河系（我们）', fx, fy + 52 * u);
               ctx.restore();
             }
@@ -453,6 +461,7 @@ export const SceneHubble: React.FC<{dur: number}> = ({dur}) => {
             left: G.x + G.w,
             top: G.y + G.h + 14 * u,
             transform: 'translateX(-100%)',
+            whiteSpace: 'nowrap',
             fontFamily: SANS,
             fontWeight: 300,
             fontSize: 24 * u,

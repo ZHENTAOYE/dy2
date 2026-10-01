@@ -70,6 +70,8 @@ export const Captions: React.FC<{items: Caption[]; bottom?: number; accent?: str
                           textShadow: g.accent
                             ? `0 0 ${20 * u}px rgba(255,190,90,0.6), 0 ${2 * u}px ${6 * u}px rgba(0,0,0,0.9)`
                             : undefined,
+                          // '——' reads as one dash, without tracking between its halves.
+                          ...(g.text === '—' ? {letterSpacing: 0} : {}),
                           ...glyphStyle(g),
                         }}
                       >

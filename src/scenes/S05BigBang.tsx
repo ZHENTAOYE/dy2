@@ -27,10 +27,10 @@ const INF_END = 17.7;
 
 const CAPTIONS = [
   {from: 6.0, to: 9.6, text: '宇宙从一个极热、极密的状态中诞生'},
-  {from: 10.0, to: 13.6, text: '诞生后约10^{-36}秒，宇宙经历了一场疯狂的【暴胀】'},
-  {from: 14.0, to: 17.5, text: '在不到10^{-32}秒内，尺度暴涨了至少【10^{26}倍】'},
-  {from: 18.0, to: 21.8, text: '相当于一个质子，瞬间被拉伸到【日地距离】那么大'},
-  {from: 22.3, to: 27.4, text: '微小的量子涨落也被急速放大，成为日后【星系的种子】'},
+  {from: 10.0, to: 13.6, text: '诞生后约10^{-36}秒，|宇宙经历了一场疯狂的【暴胀】'},
+  {from: 14.0, to: 17.5, text: '在不到10^{-32}秒内，|尺度暴涨了至少【10^{26}倍】'},
+  {from: 18.0, to: 21.8, text: '相当于一个质子，|瞬间被拉伸到【日地距离】那么大'},
+  {from: 22.3, to: 27.4, text: '微小的量子涨落也被急速放大，|成为日后【星系的种子】'},
 ];
 
 type P = {d: [number, number, number]; v: number; s: number; heat: number};
@@ -103,7 +103,8 @@ const drawComparison = (ctx: Ctx, w: number, h: number, t: number, alpha: number
   if (alpha <= 0.003) return;
   const S = Math.min(w, h);
   const cx = w / 2;
-  const cy = h * 0.46;
+  // Landscape sits higher so the distance label clears the caption line.
+  const cy = h * (h > w ? 0.46 : 0.43);
   const orbitR = S * 0.33;
   const k = easeInOutCubic(smooth(18.6, 21.0, t));
   // Exponential growth of the proton's radius from a dot to the orbit.
@@ -158,10 +159,12 @@ const drawComparison = (ctx: Ctx, w: number, h: number, t: number, alpha: number
 };
 
 // Density fluctuations: a living noise field that is stretched and seeds stars.
-const fluctTexture = (frame: number) => {
-  const W = 192;
-  const H = 108;
-  const c = memo('bang-fluct-canvas', () => {
+// Texture follows the frame aspect; noise is normalised by the short side so blobs stay round.
+const fluctTexture = (frame: number, portrait: boolean) => {
+  const W = portrait ? 108 : 192;
+  const H = portrait ? 192 : 108;
+  const N = Math.min(W, H);
+  const c = memo(`bang-fluct-canvas-${W}x${H}`, () => {
     const el = document.createElement('canvas');
     el.width = W;
     el.height = H;
@@ -174,8 +177,8 @@ const fluctTexture = (frame: number) => {
   const zoom = Math.pow(1.6, -Math.max(0, tt - 22) * 0.45);
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
-      const u = ((x - W / 2) / H) * 9 * zoom;
-      const v = ((y - H / 2) / H) * 9 * zoom;
+      const u = ((x - W / 2) / N) * 9 * zoom;
+      const v = ((y - H / 2) / N) * 9 * zoom;
       const val = n.fbm3(u, v, tt * 0.15, 4);
       const k = clamp(val * 1.5 + 0.5);
       const i = (y * W + x) * 4;
@@ -347,12 +350,21 @@ export const SceneBigBang: React.FC<{dur: number}> = ({dur}) => {
               ctx.save();
               ctx.globalAlpha = fluctA * 0.9;
               ctx.imageSmoothingEnabled = true;
-              const tex = fluctTexture(frame);
-              ctx.filter = 'blur(2px)';
+              const tex = fluctTexture(frame, h > w);
               const sc = 1.05 + (t - 22) * 0.04;
+              // Blur in proportion to the upscaled texel to hide bilinear stair-steps.
+              ctx.filter = `blur(${((w * sc) / tex.width) * 0.6}px)`;
               ctx.drawImage(tex, cx - (w * sc) / 2, cy - (h * sc) / 2, w * sc, h * sc);
               ctx.filter = 'none';
               ctx.restore();
+              // Soft dark band behind the caption so it reads over bright amber blobs.
+              const sa = 0.55 * fluctA * (1 - smooth(dur - 0.6, dur, t));
+              const bc = h > w ? h * 0.84 - 75 * u : h * 0.9 - 34.5 * u;
+              const bh = (h > w ? 230 : 150) * u;
+              const sg = ctx.createLinearGradient(0, bc - bh, 0, bc + bh);
+              for (const [o, m] of [[0, 0], [0.25, 0.7], [0.5, 1], [0.75, 0.7], [1, 0]]) sg.addColorStop(o, `rgba(2,4,12,${m * sa})`);
+              ctx.fillStyle = sg;
+              ctx.fillRect(0, bc - bh, w, 2 * bh);
               ctx.globalCompositeOperation = 'lighter';
               for (const sd of seeds()) {
                 const a = smooth(sd.t, sd.t + 0.4, t);
@@ -401,20 +413,26 @@ export const SceneBigBang: React.FC<{dur: number}> = ({dur}) => {
         <div
           style={{
             position: 'absolute',
-            right: '6%',
-            top: '24%',
+            // Plate padding grows outward; the text keeps its old anchor (6% / 24%).
+            right: width * 0.06 - 14 * u,
+            top: height * 0.24 - 12 * u,
+            padding: `${12 * u}px ${14 * u}px ${12 * u}px ${18 * u}px`,
+            borderRadius: 8 * u,
+            background: 'rgba(4,8,22,0.6)',
             fontFamily: SANS,
             fontWeight: 300,
             fontSize: 26 * u,
-            color: 'rgba(230,236,255,0.9)',
+            color: 'rgba(235,240,255,0.95)',
             letterSpacing: '0.2em',
             opacity: smooth(22.6, 23.4, t) * (1 - smooth(dur - 0.6, dur, t)),
-            textShadow: '0 2px 8px rgba(0,0,0,0.9)',
+            textShadow: `0 ${2 * u}px ${8 * u}px rgba(0,0,0,0.9)`,
             textAlign: 'right',
           }}
         >
           原初密度涨落（示意）
-          <div style={{fontSize: 20 * u, marginTop: 8 * u, color: 'rgba(255,190,140,0.9)'}}>■ 稍密　<span style={{color: 'rgba(130,180,255,0.95)'}}>■ 稍疏</span></div>
+          <div style={{fontSize: 22 * u, marginTop: 8 * u, color: 'rgba(225,232,250,0.9)'}}>
+            <span style={{color: 'rgb(245,140,60)'}}>■</span> 稍密　<span style={{color: 'rgb(80,130,255)'}}>■</span> 稍疏
+          </div>
         </div>
       ) : null}
       <ChapterTag index="04" title="大爆炸与暴胀" en="THE BIG BANG & INFLATION" dur={dur} />

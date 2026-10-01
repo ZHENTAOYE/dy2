@@ -10,10 +10,10 @@ import {mulberry32} from '../lib/rng';
 import {drawCover, nebulaTexture, starDustTexture} from '../lib/space';
 
 const CAPTIONS = [
-  {from: 0.5, to: 4.0, text: '但这并不是一场发生在空间【之中】的爆炸'},
-  {from: 8.4, to: 12.2, text: '星系就像嵌在一张不断拉伸的网格上，彼此越离越远'},
-  {from: 12.6, to: 16.3, text: '无论站在哪个星系上看，其他星系都在【远离你】'},
-  {from: 16.9, to: 20.0, text: '就像气球表面的点：没有哪一个，是真正的中心'},
+  {from: 0.5, to: 4.0, text: '但这并不是一场|发生在空间【之中】的爆炸'},
+  {from: 8.4, to: 12.2, text: '星系就像嵌在一张|不断拉伸的网格上，彼此越离越远'},
+  {from: 12.6, to: 16.3, text: '无论站在哪个星系上看，|其他星系都在【远离你】'},
+  {from: 16.9, to: 20.0, text: '就像气球表面的点：|没有哪一个，是真正的中心'},
   {from: 20.3, to: 23.6, text: '那么，如果让时间【倒流】呢？'},
 ];
 
@@ -69,13 +69,50 @@ const scaleA = (t: number) => {
   return Math.exp(0.07 * 8.4) * Math.exp(0.09 * 4) * Math.exp(0.08 * (t - 13.2));
 };
 
-const drawPlane = (ctx: Ctx, w: number, h: number, t: number, alpha: number) => {
-  const S = Math.min(w, h);
-  const u = S / 1080;
-  const swoop = easeInOutCubic(smooth(7.6, 9.4, t));
+const OBS = [
+  [0, 0],
+  [3, 2],
+];
+
+// The top-down view pulls back so the measured neighbours fit either aspect ratio.
+const planeCam = (w: number, h: number, swoop: number): PlaneCam => {
   const p = lerp(0.6, 1.5, swoop);
   const camH = lerp(5.5, 11, swoop);
-  const c: PlaneCam = {x: 0, y: camH, z: -camH / Math.tan(p) - lerp(0.0, 0, swoop), p, F: S * 0.95, W: w, H: h};
+  return {x: 0, y: camH, z: -camH / Math.tan(p), p, F: Math.min(w, h) * 0.95 * lerp(1, 0.65, swoop), W: w, H: h};
+};
+
+const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
+
+// Phase-B neighbours to measure, nearest first: one per direction, and only galaxies that stay on screen,
+// clear of the chapter tag and the caption, until the phase ends.
+const measured = (w: number, h: number, oi: number) =>
+  memo(`space-measured-${w}x${h}-${oi}`, () => {
+    const u = Math.min(w, h) / 1080;
+    const portrait = h > w;
+    const c = planeCam(w, h, 1);
+    const aEnd = scaleA(oi === 0 ? 12.4 : 16.4);
+    const bottom = portrait ? h * 0.84 - 195 * u : h * 0.9 - 110 * u;
+    const Q = [0, 0, 0];
+    const seen = new Set<string>();
+    return planeGalaxies()
+      .map((g) => [g.i - OBS[oi][0], g.j - OBS[oi][1]])
+      .filter(([di, dj]) => di || dj)
+      .sort((x, y) => Math.hypot(x[0], x[1]) - Math.hypot(y[0], y[1]))
+      .filter(([di, dj]) => {
+        const q = gcd(Math.abs(di), Math.abs(dj));
+        const dir = `${di / q},${dj / q}`;
+        proj(c, aEnd * di, aEnd * dj, Q);
+        const top = (portrait ? 275 : Q[0] < 720 * u ? 190 : 75) * u;
+        if (seen.has(dir) || Q[0] < 80 * u || Q[0] > w - 80 * u || Q[1] < top || Q[1] > bottom) return false;
+        seen.add(dir);
+        return true;
+      })
+      .slice(0, 7);
+  });
+
+const drawPlane = (ctx: Ctx, w: number, h: number, t: number, alpha: number) => {
+  const u = Math.min(w, h) / 1080;
+  const c = planeCam(w, h, easeInOutCubic(smooth(7.6, 9.4, t)));
   const a = scaleA(t);
   const swap = easeInOutCubic(smooth(12.4, 13.4, t));
   const ox = 3 * swap;
@@ -122,7 +159,7 @@ const drawPlane = (ctx: Ctx, w: number, h: number, t: number, alpha: number) => 
     }
   }
   // Galaxies stay the same size: gravity holds them together.
-  const tilt = Math.sin(p);
+  const tilt = Math.sin(c.p);
   const G = planeGalaxies();
   for (const g of G) {
     proj(c, a * (g.i - ox), a * (g.j - oz), P);
@@ -135,49 +172,51 @@ const drawPlane = (ctx: Ctx, w: number, h: number, t: number, alpha: number) => 
   // Observer marker + distance lines (phase B).
   const lines = win(t, 9.0, 16.4, 0.8, 0.5);
   if (lines > 0) {
-    const obs = [
-      [0, 0],
-      [3, 2],
-    ];
     const oi = t < 12.9 ? 0 : 1;
-    const [oxI, ozI] = obs[oi];
+    const [oxI, ozI] = OBS[oi];
     const swapFade = 1 - win(t, 12.3, 13.5, 0.2, 0.2);
     proj(c, a * (oxI - ox), a * (ozI - oz), P);
     const k = lines * swapFade;
     drawGlow(ctx, P[0], P[1], 80 * u, [90, 220, 255], 0.9 * k);
     drawRing(ctx, P[0], P[1], 46 * u, 3 * u, [140, 230, 255], k);
-    const neigh = G.filter((g) => g.i !== oxI || g.j !== ozI)
-      .map((g) => ({g, d: Math.hypot(g.i - oxI, g.j - ozI)}))
-      .sort((x, y) => x.d - y.d)
-      .slice(0, 7);
     const a0 = oi === 0 ? scaleA(9.0) : scaleA(13.2);
-    for (const {g} of neigh) {
-      proj(c, a * (g.i - ox), a * (g.j - oz), Q);
+    const marks: number[][] = [];
+    ctx.setLineDash([10 * u, 8 * u]);
+    ctx.strokeStyle = `rgba(255,210,140,${0.75 * k})`;
+    ctx.lineWidth = 2.2 * u;
+    for (const [di, dj] of measured(w, h, oi)) {
+      proj(c, a * (oxI + di - ox), a * (ozI + dj - oz), Q);
       const dx = Q[0] - P[0];
       const dy = Q[1] - P[1];
       const L = Math.hypot(dx, dy);
-      ctx.setLineDash([10 * u, 8 * u]);
-      ctx.strokeStyle = `rgba(255,210,140,${0.75 * k})`;
-      ctx.lineWidth = 2.2 * u;
       ctx.beginPath();
       ctx.moveTo(P[0] + (dx / L) * 50 * u, P[1] + (dy / L) * 50 * u);
       ctx.lineTo(Q[0] - (dx / L) * 30 * u, Q[1] - (dy / L) * 30 * u);
       ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.save();
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.font = font(22 * u, 500, '"Montserrat"');
-      ctx.fillStyle = `rgba(255,225,170,${k})`;
-      ctx.textAlign = 'center';
-      ctx.fillText(`×${(a / a0).toFixed(2)}`, (P[0] + Q[0]) / 2, (P[1] + Q[1]) / 2 - 8 * u);
-      ctx.restore();
+      // 0.6 of the way out keeps neighbouring labels apart.
+      marks.push([P[0] + dx * 0.6, P[1] + dy * 0.6 - 8 * u]);
     }
+    ctx.setLineDash([]);
+    // Labels over all the rays, with a dark halo so no dashes strike through them.
     ctx.save();
     ctx.globalCompositeOperation = 'source-over';
-    ctx.font = font(28 * u, 500);
     ctx.textAlign = 'center';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = `rgba(2,6,18,${0.85 * k})`;
+    ctx.lineWidth = 6 * u;
+    ctx.font = font(22 * u, 500, '"Montserrat"');
+    ctx.fillStyle = `rgba(255,225,170,${k})`;
+    const ratio = `×${(a / a0).toFixed(2)}`;
+    for (const [x, y] of marks) {
+      ctx.strokeText(ratio, x, y);
+      ctx.fillText(ratio, x, y);
+    }
+    const name = oi === 0 ? '我们' : '另一个星系上的观测者';
+    ctx.lineWidth = 8 * u;
+    ctx.font = font(28 * u, 500);
     ctx.fillStyle = `rgba(150,230,255,${k})`;
-    ctx.fillText(oi === 0 ? '我们' : '另一个星系上的观测者', P[0], P[1] + 86 * u);
+    ctx.strokeText(name, P[0], P[1] + 86 * u);
+    ctx.fillText(name, P[0], P[1] + 86 * u);
     ctx.restore();
   }
   ctx.restore();
@@ -190,9 +229,11 @@ const drawBalloon = (ctx: Ctx, w: number, h: number, t: number, alpha: number) =
   const tt = t - 16.3;
   const grow = Math.exp(0.16 * Math.min(tt, 4.3));
   const rewind = smooth(20.6, 23.8, t);
-  const R = S * 0.2 * grow * (1 - 0.75 * Math.pow(rewind, 1.5));
+  // Landscape: smaller and lower, so at its peak the sphere clears both the headline and the caption.
+  const portrait = h > w;
+  const R = S * (portrait ? 0.2 : 0.14) * grow * (1 - 0.75 * Math.pow(rewind, 1.5));
   const cx = w / 2;
-  const cy = h * 0.47;
+  const cy = h * (portrait ? 0.47 : 0.535);
   const rotY = tt * 0.25 - rewind * 1.8;
   const tiltX = 0.38;
   const hot = rewind;
@@ -258,13 +299,13 @@ const drawBalloon = (ctx: Ctx, w: number, h: number, t: number, alpha: number) =
     const front = p[2] < 0;
     const al = front ? 1 : 0.18;
     const col: [number, number, number] = mix3([255, 255, 255], [255, 170, 90], hot);
-    drawGalaxy(ctx, galaxySprite(gx.seed, 'spiral', 128, 2200), cx + p[0] * R, cy + p[1] * R, 34 * u, gx.rot, 0.6 + 0.4 * Math.abs(p[2]), al);
+    drawGalaxy(ctx, galaxySprite(gx.seed, 'spiral', 128, 2200), cx + p[0] * R, cy + p[1] * R, (portrait ? 34 : 29) * u, gx.rot, 0.6 + 0.4 * Math.abs(p[2]), al);
     drawGlow(ctx, cx + p[0] * R, cy + p[1] * R, 10 * u, col, al * 0.5);
   }
   ctx.restore();
 };
 
-export const SceneSpace: React.FC<{dur: number}> = ({dur}) => {
+export const SceneSpace: React.FC<{dur: number}> = () => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const t = frame / fps;
@@ -297,7 +338,8 @@ export const SceneSpace: React.FC<{dur: number}> = ({dur}) => {
           }}
         />
       </Shake>
-      <ChapterTag index="02" title="空间本身在膨胀" en="SPACE ITSELF STRETCHES" dur={dur} />
+      {/* Gone before '宇宙没有中心' slams in under it. */}
+      <ChapterTag index="02" title="空间本身在膨胀" en="SPACE ITSELF STRETCHES" dur={16.6} />
       <Statement from={4.3} to={8.0} text="而是空间本身，在膨胀" theme="cyan" size={120} serif />
       <Statement from={16.6} to={20.0} text="宇宙没有中心" theme="white" size={120} y={0.17} serif slam />
       <Captions items={CAPTIONS} />

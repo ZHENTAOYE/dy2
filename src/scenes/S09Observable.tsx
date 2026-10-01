@@ -21,7 +21,7 @@ import {
   memoTexture,
   starColor,
 } from '../lib/canvas';
-import {clamp, decay, lerp, mix3, monotone, smooth} from '../lib/math';
+import {clamp, decay, lerp, mix3, monotone, smooth, win} from '../lib/math';
 import {makeNoise} from '../lib/noise';
 import {LookCam, renderCloud, toCloud} from '../lib/points';
 import {gauss, mulberry32} from '../lib/rng';
@@ -33,11 +33,11 @@ const BANG = 24.3;
 
 const CAPTIONS = [
   {from: 0.5, to: 3.8, text: '现在，让我们从地球出发，一路向外'},
-  {from: 9.6, to: 13.3, text: '银河系：直径约10万光年，拥有数千亿颗恒星'},
-  {from: 14.0, to: 17.6, text: '而它，只是可观测宇宙中数千亿个星系之一'},
+  {from: 9.6, to: 13.3, text: '银河系：直径约10万光年，|拥有数千亿颗恒星'},
+  {from: 14.0, to: 17.6, text: '而它，只是可观测宇宙中|数千亿个星系之一'},
   {from: 18.0, to: 21.4, text: '宇宙的年龄，只有138亿年'},
   {from: 21.7, to: 24.1, text: '但我们能看到的宇宙——'},
-  {from: 28.3, to: 31.6, text: '因为在光赶路的同时，空间本身也在不断膨胀'},
+  {from: 28.3, to: 31.6, text: '因为在光赶路的同时，|空间本身也在不断膨胀'},
 ];
 
 // log10(view width in metres) over scene time.
@@ -369,6 +369,7 @@ export const SceneObservable: React.FC<{dur: number}> = ({dur}) => {
   const {fps, width, height} = useVideoConfig();
   const t = frame / fps;
   const u = Math.min(width, height) / 1080;
+  const portrait = height > width;
   const L = VIEW(t);
   const dL = VIEW(t + 1 / fps) - L;
   const zoomSpeed = clamp(dL * fps / 2.6);
@@ -458,14 +459,16 @@ export const SceneObservable: React.FC<{dur: number}> = ({dur}) => {
               }
               const [x0, y0] = P(-AU, 0);
               drawFlare(ctx, x0, y0, 60 * u, [255, 230, 170], aNb);
+              // Names go before the zoom piles them onto each other (first overlap below ~7 px per light year).
+              const nameA = aNb * smooth(8, 14, (LY * pxPerM) / u);
               ctx.save();
               ctx.globalCompositeOperation = 'source-over';
               ctx.font = font(22 * u, 500);
-              ctx.fillStyle = `rgba(255,230,180,${aNb})`;
+              ctx.fillStyle = `rgba(255,230,180,${nameA})`;
               ctx.fillText('太阳', x0 + 18 * u, y0 - 14 * u);
               for (const lb of labelled) {
                 const [x, y] = P(lb.x, lb.y);
-                ctx.fillStyle = `rgba(200,220,255,${aNb * 0.9})`;
+                ctx.fillStyle = `rgba(200,220,255,${nameA * 0.9})`;
                 ctx.fillText(lb.name, x + 14 * u, y - 10 * u);
               }
               ctx.restore();
@@ -479,9 +482,17 @@ export const SceneObservable: React.FC<{dur: number}> = ({dur}) => {
             if (aMW > 0) {
               const D = 1.0e21 * pxPerM / 0.92;
               const [gx, gy] = P(GC[0], GC[1]);
-              drawGalaxy(ctx, galaxySprite(213, 'barred', 1024, 150000), gx, gy, D, 0.3, 0.92, aMW);
-              // "You are here".
-              const here = aMW * (1 - smooth(21.6, 22.2, L));
+              // Fade the sprite in only once its texels are small on screen, not as giant blurred squares.
+              const sharp = 1 - smooth(4, 12, D / 1024);
+              drawGalaxy(ctx, galaxySprite(213, 'barred', 1024, 150000), gx, gy, D, 0.3, 0.92, aMW * sharp);
+              // Until then, dust and a soft disc haze keep the zoom from dropping to black.
+              const bridge = aMW * (1 - sharp) * smooth(19.0, 19.6, L);
+              if (bridge > 0.003) {
+                drawCover(ctx, starDustTexture(22, 1920, 1080, 4200), w, h, 1.0, 0, 0.7 * bridge);
+                drawGlow(ctx, gx, gy, Math.min(D * 0.45, S * 6), [255, 222, 190], 0.3 * bridge);
+              }
+              // "You are here", arriving with the galaxy (the neighbour names are long gone).
+              const here = aMW * sharp * (1 - smooth(21.6, 22.2, L));
               if (here > 0) {
                 const [hx, hy] = P(0, 0);
                 drawRing(ctx, hx, hy, 18 * u, 2.5 * u, [120, 230, 255], here);
@@ -586,7 +597,12 @@ export const SceneObservable: React.FC<{dur: number}> = ({dur}) => {
               // The boundary: light from the edge is the CMB.
               if (Dc > R_OBS * 1.05) {
                 const rs = (focal * R_OBS) / Math.sqrt(Dc * Dc - R_OBS * R_OBS);
-                const ringA = smooth(BANG - 0.5, BANG + 0.15, t);
+                // Appears under the flash, dims while the Statement holds, returns for the ring caption.
+                // (Portrait puts the Statement below the ring, so only landscape needs the dim.)
+                const hold = h > w ? 0 : smooth(BANG + 0.3, BANG + 0.9, t) * (1 - smooth(28.0, 28.6, t));
+                const ringA = smooth(BANG - 0.05, BANG + 0.3, t) * (1 - 0.55 * hold);
+                // The centre marker would peek through the landscape Statement, which sits right on it.
+                const markA = ringA * (h > w ? 1 : 1 - hold);
                 ctx.save();
                 ctx.globalAlpha = ringA;
                 ctx.globalCompositeOperation = 'source-over';
@@ -598,8 +614,8 @@ export const SceneObservable: React.FC<{dur: number}> = ({dur}) => {
                 ctx.globalCompositeOperation = 'lighter';
                 drawRing(ctx, w / 2, h / 2, rs * 1.04, rs * 0.04, [255, 200, 150], ringA * 0.6);
                 drawGlow(ctx, w / 2, h / 2, rs * 1.5, [255, 170, 110], ringA * 0.12);
-                drawGlow(ctx, w / 2, h / 2, 14 * u, [140, 230, 255], ringA);
-                drawRing(ctx, w / 2, h / 2, 22 * u, 2.5 * u, [140, 230, 255], ringA);
+                drawGlow(ctx, w / 2, h / 2, 14 * u, [140, 230, 255], markA);
+                drawRing(ctx, w / 2, h / 2, 22 * u, 2.5 * u, [140, 230, 255], markA);
               }
             }
             // Impact at the reveal.
@@ -615,6 +631,15 @@ export const SceneObservable: React.FC<{dur: number}> = ({dur}) => {
         />
       </Shake>
 
+      {/* Landscape captions 1-2 sit on the Earth's bright limb and the Milky Way disc: bottom scrim. */}
+      {portrait ? null : (
+        <AbsoluteFill
+          style={{
+            background: 'linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0.5) 18%, rgba(0,0,0,0) 32%)',
+            opacity: win(t, 0.1, 4.4, 0.5, 0.6) + win(t, 9.1, 13.9, 0.5, 0.6),
+          }}
+        />
+      )}
       {/* Object label */}
       {label ? (
         <div
@@ -648,7 +673,8 @@ export const SceneObservable: React.FC<{dur: number}> = ({dur}) => {
         style={{
           position: 'absolute',
           left: '50%',
-          top: '8%',
+          // Portrait: just above the ring, below the Readout and object label.
+          top: portrait ? '34%' : '8%',
           transform: 'translateX(-50%)',
           fontFamily: SANS,
           fontWeight: 300,
@@ -662,8 +688,21 @@ export const SceneObservable: React.FC<{dur: number}> = ({dur}) => {
       >
         外圈：宇宙微波背景 —— 我们能看到的最远的光
       </div>
-      <ChapterTag index="08" title="可观测宇宙" en="THE OBSERVABLE UNIVERSE" dur={dur} />
-      <Statement from={BANG} to={28.0} text="直径约930亿光年" sub="THE OBSERVABLE UNIVERSE" theme="gold" size={124} serif slam />
+      {/* Clears the top band for the ring caption. */}
+      <div style={{opacity: 1 - smooth(27.9, 28.5, t)}}>
+        <ChapterTag index="08" title="可观测宇宙" en="THE OBSERVABLE UNIVERSE" dur={dur} />
+      </div>
+      <Statement
+        from={BANG}
+        to={28.0}
+        text="直径约930亿光年"
+        sub="THE OBSERVABLE UNIVERSE"
+        theme="gold"
+        size={124}
+        y={portrait ? 0.7 : 0.5}
+        serif
+        slam
+      />
       <Captions items={CAPTIONS} />
       <Flash amount={decay(t, BANG - 0.03, 5) * 1.0} />
       <Fade amount={1 - smooth(0, 0.5, t) + smooth(dur - 0.5, dur, t)} />
