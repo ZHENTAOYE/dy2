@@ -3,7 +3,7 @@
 import { glow, glowStroke, mix, withAlpha } from "../../lib/canvas";
 import { clamp, ease, hash, rng } from "../../lib/math";
 import { C } from "../../lib/theme";
-import { Cam, camAt, EARTH_C, FOCAL, R_EARTH } from "./cam";
+import { Cam, camAt, EARTH_C, FINAL, FOCAL, R_EARTH } from "./cam";
 
 type G = CanvasRenderingContext2D;
 type V = [number, number, number];
@@ -109,6 +109,53 @@ export const landAt = (x: number, y: number, z: number) => {
   return v + det - THRESH;
 };
 
+// ------------------------------------------------------------------ night-light density (equirect)
+let popM: Float32Array | null = null;
+let popR: Float32Array | null = null;
+const popRaw = (n: V, land: number) => {
+  const cont = fbm(n, 2.2, 2, 5.5);
+  const coast = land < 0.03 ? 1.25 : 1;
+  // our campus sits in a populous region (matches the towns drawn by city.ts)
+  const d0 = (n[0] - N0[0]) ** 2 + (n[1] - N0[1]) ** 2 + (n[2] - N0[2]) ** 2;
+  return (0.55 * cont + 0.45 * fbm(n, 11, 3, 11.1)) * coast * (Math.abs(n[2]) > 0.82 ? 0.5 : 1) + 0.16 * Math.exp(-d0 / 0.03);
+};
+const popMap = () => {
+  if (popM) return popM;
+  landMask();
+  const m = new Float32Array(MW * MH);
+  const raw = new Float32Array(MW * MH).fill(-1);
+  for (let y = 0; y < MH; y++) {
+    const lat = (0.5 - (y + 0.5) / MH) * Math.PI;
+    for (let x = 0; x < MW; x++) {
+      const lon = ((x + 0.5) / MW - 0.5) * Math.PI * 2;
+      const n = toN(lat, lon);
+      const land = landAt(n[0], n[1], n[2]);
+      if (land < -0.03) continue;
+      const pop = popRaw(n, land);
+      raw[y * MW + x] = pop;
+      if (land < -0.01) continue;
+      m[y * MW + x] = Math.pow(clamp((pop - 0.5) * 4.4), 1.6) * clamp((land + 0.01) / 0.02);
+    }
+  }
+  popM = m;
+  popR = raw;
+  return m;
+};
+const sampleEq = (m: Float32Array, n: V) => {
+  const lat = Math.asin(clamp(n[2], -1, 1));
+  const lon = Math.atan2(n[0], -n[1]);
+  const fx = (lon / (Math.PI * 2) + 0.5) * MW - 0.5;
+  const fy = (0.5 - lat / Math.PI) * MH - 0.5;
+  const x0 = Math.floor(fx);
+  const y0 = Math.max(0, Math.min(MH - 2, Math.floor(fy)));
+  const tx = fx - x0;
+  const ty = clamp(fy - y0);
+  const xa = ((x0 % MW) + MW) % MW;
+  const xb = (xa + 1) % MW;
+  return (m[y0 * MW + xa] * (1 - tx) + m[y0 * MW + xb] * tx) * (1 - ty) + (m[(y0 + 1) * MW + xa] * (1 - tx) + m[(y0 + 1) * MW + xb] * tx) * ty;
+};
+const popAt = (n: V) => sampleEq(popMap(), n);
+
 // ------------------------------------------------------------------ sun
 let SUN: V | null = null;
 /** Sun almost directly behind the globe (seen from the final camera), peeking at the upper right. */
@@ -127,8 +174,9 @@ type Lights = { n: Float32Array; b: Float32Array; cnt: number };
 let lights: Lights | null = null;
 const globeLights = () => {
   if (lights) return lights;
-  landMask();
-  const N = 260000;
+  popMap();
+  const R = popR!;
+  const N = 340000;
   const ga = Math.PI * (3 - Math.sqrt(5));
   const tmpN: number[] = [];
   const tmpB: number[] = [];
@@ -137,19 +185,21 @@ const globeLights = () => {
     const s = Math.sqrt(1 - z * z);
     const a = i * ga;
     const n: V = [s * Math.cos(a), s * Math.sin(a), z];
-    const land = landAt(n[0], n[1], n[2]);
-    if (land < 0) continue;
-    // population: continental density x city clusters, denser near coasts
-    const cont = fbm(n, 2.2, 2, 5.5);
-    const coast = land < 0.03 ? 1.25 : 1;
-    const pop = (0.55 * cont + 0.45 * fbm(n, 11, 3, 11.1)) * coast * (Math.abs(z) > 0.82 ? 0.5 : 1);
+    const pop = sampleEq(R, n);
     if (pop < 0.5) continue;
-    // light density falls off towards the edge of each cluster
-    if (hash(i * 9.13 + 0.7) > clamp((pop - 0.5) * 7)) continue;
-    const j = 0.009;
+    // cheap rejection first, then the exact coastline
+    const dens = clamp((pop - 0.5) * 6);
+    const h = hash(i * 9.13 + 0.7);
+    if (h > dens * 0.7) continue;
+    if (landAt(n[0], n[1], n[2]) < 0) continue;
+    // break dense regions into clusters and threads instead of solid fills
+    const cl = vn3(n[0] * 260 + 3.3, n[1] * 260, n[2] * 260 - 1.7);
+    const th = vn3(n[0] * 900 - 7.1, n[1] * 900 + 2.2, n[2] * 900);
+    if (h > dens * 0.7 * clamp(0.15 + 1.25 * (cl - 0.3)) * (0.45 + 0.55 * th)) continue;
+    const j = 0.006;
     const m = norm([n[0] + (hash(i * 1.3) - 0.5) * j, n[1] + (hash(i * 2.9) - 0.5) * j, n[2] + (hash(i * 4.7) - 0.5) * j]);
     tmpN.push(m[0], m[1], m[2]);
-    tmpB.push(clamp(Math.pow((pop - 0.5) * 4.2, 1.4) * (0.6 + 0.4 * hash(i * 7.7)) + 0.1));
+    tmpB.push(clamp(Math.pow((pop - 0.5) * 4.2, 1.4) * (0.55 + 0.45 * hash(i * 7.7)) * (0.6 + 0.6 * cl) + 0.1));
   }
   lights = { n: new Float32Array(tmpN), b: new Float32Array(tmpB), cnt: tmpB.length };
   return lights;
@@ -263,52 +313,102 @@ const drawStars = (g: G, c: Cam, f: number, a: number) => {
 };
 
 // ------------------------------------------------------------------ ray-cast globe base
-const BW = 384;
-const BH = 216;
+// Rendered only over the globe's screen bounding box, at <= ~95k rays, with an anti-aliased silhouette
+// (coverage from the ray's closest approach), so the limb stays smooth after upscaling.
+const MAX_RAYS = 95000;
 let baseC: HTMLCanvasElement | null = null;
 let baseImg: ImageData | null = null;
-const drawBase = (g: G, c: Cam, a: number) => {
+const drawBase = (g: G, c: Cam, f: number, a: number, lightA: number) => {
   if (a <= 0.01) return;
-  if (!baseC) {
-    baseC = document.createElement("canvas");
-    baseC.width = BW;
-    baseC.height = BH;
-    baseImg = baseC.getContext("2d")!.createImageData(BW, BH);
-  }
-  const img = baseImg!;
   const S = sunDir();
   const o: V = [c.x - EARTH_C[0], c.y - EARTH_C[1], c.z - EARTH_C[2]];
   const oo = dot(o, o);
   const R2 = R_EARTH * R_EARTH;
+  // screen-space bounds of the globe
+  const gc = globeCircle(c);
+  let x0 = 0;
+  let y0 = 0;
+  let x1 = 1920;
+  let y1 = 1080;
+  if (gc && gc.r < 2400) {
+    const m = gc.r * 1.06 + 8;
+    x0 = Math.max(0, Math.floor(gc.x - m));
+    y0 = Math.max(0, Math.floor(gc.y - m));
+    x1 = Math.min(1920, Math.ceil(gc.x + m));
+    y1 = Math.min(1080, Math.ceil(gc.y + m));
+  }
+  if (x1 - x0 < 4 || y1 - y0 < 4) return;
+  const sx = Math.max(2.5, Math.sqrt(((x1 - x0) * (y1 - y0)) / MAX_RAYS));
+  const BW = Math.ceil((x1 - x0) / sx);
+  const BH = Math.ceil((y1 - y0) / sx);
+  if (!baseC || baseC.width < BW || baseC.height < BH) {
+    baseC = document.createElement("canvas");
+    baseC.width = Math.max(BW, baseC ? baseC.width : 0, 400);
+    baseC.height = Math.max(BH, baseC ? baseC.height : 0, 400);
+    baseImg = null;
+  }
+  if (!baseImg || baseImg.width !== BW || baseImg.height !== BH) baseImg = baseC.getContext("2d")!.createImageData(BW, BH);
+  const img = baseImg;
   const Rv: V = [c.cyw, 0, -c.syw];
   const Uv: V = [-c.syw * c.sp, c.cp, -c.cyw * c.sp];
   const Fv: V = [c.syw * c.cp, c.sp, c.cyw * c.cp];
-  const sx = 1920 / BW;
   const data = img.data;
+  const pixAng = sx / FOCAL;
+  const camH = Math.sqrt(oo) - R_EARTH;
+  // ground context while we are still low: terrain texture + aerial haze towards the far (upper) part of the frame
+  const lowK = 1 - clamp((camH - 1.2e6) / 3e6);
   for (let py = 0; py < BH; py++)
     for (let px = 0; px < BW; px++) {
-      const x = (px + 0.5) * sx - 960;
-      const y = (py + 0.5) * sx - 540;
+      const x = x0 + (px + 0.5) * sx - 960;
+      const y = y0 + (py + 0.5) * sx - 540;
       const d = norm([x * Rv[0] + y * Uv[0] + FOCAL * Fv[0], x * Rv[1] + y * Uv[1] + FOCAL * Fv[1], x * Rv[2] + y * Uv[2] + FOCAL * Fv[2]]);
       const b = dot(o, d);
-      const disc = b * b - (oo - R2);
       const k = (py * BW + px) * 4;
-      if (disc <= 0) {
+      if (b >= 0) {
         data[k + 3] = 0;
         continue;
       }
-      const t = -b - Math.sqrt(disc);
-      if (t <= 0) {
+      const h2 = Math.max(0, oo - b * b);
+      const hRay = Math.sqrt(h2);
+      const texM = -b * pixAng; // metres covered by one texel at the closest approach
+      const cov = clamp(0.5 + (R_EARTH - hRay) / texM);
+      if (cov <= 0) {
         data[k + 3] = 0;
         continue;
       }
-      const n: V = [(o[0] + t * d[0]) / R_EARTH, (o[1] + t * d[1]) / R_EARTH, (o[2] + t * d[2]) / R_EARTH];
+      const disc = R2 - h2;
+      const t = disc > 0 ? -b - Math.sqrt(disc) : -b;
+      const n: V = norm([o[0] + t * d[0], o[1] + t * d[1], o[2] + t * d[2]]);
       const land = clamp((landAt(n[0], n[1], n[2]) + 0.012) / 0.024);
       const ndl = dot(n, S);
       const mu = clamp(-dot(d, n));
-      let r = 2 + 12 * land;
-      let gg = 5 + 16 * land;
-      let bb = 13 + 19 * land;
+      let r = 2 + 9 * land;
+      let gg = 5 + 11 * land;
+      let bb = 13 + 12 * land;
+      if (lowK > 0 && land > 0) {
+        // night terrain: value noise with level-of-detail by texel footprint
+        const foot = t * pixAng;
+        let tv = 0;
+        let tw = 0;
+        for (let o2 = 0; o2 < 3; o2++) {
+          const fq = 260 * Math.pow(3.2, o2);
+          const cell = R_EARTH / fq;
+          const w = clamp(cell / (foot * 3) - 0.5) / (1 + o2 * 0.6);
+          if (w <= 0) continue;
+          tv += w * (vn3(n[0] * fq + o2 * 7.1, n[1] * fq - o2 * 3.3, n[2] * fq + 1.9) - 0.5);
+          tw += w;
+        }
+        const tt = tw > 0 ? tv / Math.max(tw, 0.6) : 0;
+        const kk = lowK * land;
+        r += kk * (6 + 26 * tt);
+        gg += kk * (5 + 22 * tt);
+        bb += kk * (2 + 12 * tt);
+        // aerial perspective: the further the ground, the more blue-grey haze
+        const hz = clamp((t / Math.max(camH, 1) - 1.04) * 1.6) * lowK;
+        r += hz * 16;
+        gg += hz * 30;
+        bb += hz * 52;
+      }
       const day = clamp((ndl + 0.04) / 0.3);
       if (day > 0) {
         const k2 = day * (0.35 + 0.65 * clamp(ndl * 2));
@@ -320,6 +420,14 @@ const drawBase = (g: G, c: Cam, a: number) => {
       r += 120 * tw;
       gg += 45 * tw;
       bb += 20 * tw;
+      // soft city-light glow of populated regions, only well inside the night side
+      const nightK = clamp((-0.04 - ndl) / 0.2);
+      if (nightK > 0 && lightA > 0) {
+        const em = Math.min(0.6, popAt(n) * nightK * lightA * clamp(mu * 4));
+        r += 140 * em;
+        gg += 80 * em;
+        bb += 30 * em;
+      }
       const rim = Math.pow(1 - mu, 3);
       const rimDay = 0.35 + 1.6 * clamp(ndl + 0.3);
       r += 18 * rim * rimDay;
@@ -328,15 +436,16 @@ const drawBase = (g: G, c: Cam, a: number) => {
       data[k] = Math.min(255, r);
       data[k + 1] = Math.min(255, gg);
       data[k + 2] = Math.min(255, bb);
-      data[k + 3] = 255;
+      data[k + 3] = Math.round(255 * cov);
     }
   baseC.getContext("2d")!.putImageData(img, 0, 0);
   g.save();
   g.globalAlpha = a;
   g.imageSmoothingEnabled = true;
   g.imageSmoothingQuality = "high";
-  g.drawImage(baseC, 0, 0, 1920, 1080);
+  g.drawImage(baseC, 0, 0, BW, BH, x0, y0, BW * sx, BH * sx);
   g.restore();
+  void f;
 };
 
 /** Projected globe circle (approximate for off-axis views). */
@@ -391,19 +500,39 @@ const drawAtmosphere = (g: G, c: Cam, f: number, a: number) => {
   g.arc(gc.x, gc.y, gc.r * 1.2, 0, Math.PI * 2);
   g.arc(gc.x, gc.y, gc.r * 0.985, 0, Math.PI * 2, true);
   g.fill();
-  // the sun peeking over the limb
+  // thin vector rim: a crisp, anti-aliased limb over the ray-cast base
+  if (gc.r < 1400) {
+    const rimG = g.createLinearGradient(gc.x - ux * gc.r, gc.y - uy * gc.r, gc.x + ux * gc.r, gc.y + uy * gc.r);
+    rimG.addColorStop(0, withAlpha("#4f8dff", 0.55 * a));
+    rimG.addColorStop(0.6, withAlpha("#7fc4ff", 0.7 * a));
+    rimG.addColorStop(1, withAlpha("#ffe0b0", 0.9 * a));
+    g.strokeStyle = rimG;
+    g.lineWidth = Math.max(1.5, gc.r * 0.006);
+    g.beginPath();
+    g.arc(gc.x, gc.y, gc.r * 0.999, 0, Math.PI * 2);
+    g.stroke();
+  }
+  // the sun peeking over the limb (+ a short warm bloom on the final beat)
   const fl = a * clamp((f - 735) / 40);
+  const ft = f - FINAL;
+  const burst = ft >= 0 && ft < 14 ? Math.pow(1 - ft / 14, 2) : 0;
   if (fl > 0) {
     const fx = gc.x + ux * gc.r * 1.015;
     const fy = gc.y + uy * gc.r * 1.015;
-    glow(g, fx, fy, 260 * fl, "#ffb860", 0.55 * fl, 0.04);
-    glow(g, fx, fy, 70, "#fff4e0", 0.95 * fl, 0.25);
+    glow(g, fx, fy, (260 + 260 * burst) * fl, "#ffb860", (0.55 + 0.35 * burst) * fl, 0.04);
+    glow(g, fx, fy, 70 + 60 * burst, "#fff4e0", 0.95 * fl, 0.25);
+    if (burst > 0) glow(g, fx, fy, 900 * (0.6 + 0.4 * burst), "#ffcf8a", 0.22 * burst * fl, 0.02);
     const st = g.createLinearGradient(fx - 380, fy, fx + 380, fy);
     st.addColorStop(0, withAlpha("#7fc8ff", 0));
-    st.addColorStop(0.5, withAlpha("#ffffff", 0.75 * fl));
+    st.addColorStop(0.5, withAlpha("#ffffff", (0.75 + 0.25 * burst) * fl));
     st.addColorStop(1, withAlpha("#7fc8ff", 0));
     g.fillStyle = st;
-    g.fillRect(fx - 380, fy - 2, 760, 4);
+    const sw = 380 + 420 * burst;
+    g.save();
+    g.translate(fx, fy);
+    g.scale(sw / 380, 1);
+    g.fillRect(-380, -2 - 2 * burst, 760, 4 + 4 * burst);
+    g.restore();
     // lens ghosts along the axis through the frame centre
     for (const [k, r, col] of [
       [0.5, 46, "#7fffd4"],
@@ -437,7 +566,7 @@ const drawLights = (g: G, c: Cam, f: number, a: number) => {
       const nz = L.n[i * 3 + 2];
       const facing = (nx * o[0] + ny * o[1] + nz * o[2]) / od - R_EARTH / od;
       if (facing <= 0) continue;
-      const night = clamp((0.1 - (nx * S[0] + ny * S[1] + nz * S[2])) / 0.22);
+      const night = clamp((-0.05 - (nx * S[0] + ny * S[1] + nz * S[2])) / 0.2);
       if (night <= 0) continue;
       const X = EARTH_C[0] + nx * R_EARTH;
       const Y = EARTH_C[1] + ny * R_EARTH;
@@ -455,14 +584,15 @@ const drawLights = (g: G, c: Cam, f: number, a: number) => {
       if (sx < -4 || sx > 1924 || sy < -4 || sy > 1084) continue;
       const b = L.b[i];
       const limb = clamp(facing * 9);
-      g.globalAlpha = Math.min(1, a * night * limb * (0.35 + 0.75 * b));
-      const s = 0.9 + 1.3 * b;
+      g.globalAlpha = Math.min(0.62, a * night * limb * (0.3 + 0.6 * b));
+      const s = 0.9 + 1.1 * b;
       g.fillRect(sx - s / 2, sy - s / 2, s, s);
-      if (b > 0.86 && big.length < 1500) big.push(sx, sy, a * night * limb * b);
+      if (b > 0.9 && big.length < 1200) big.push(sx, sy, a * night * limb * b);
     }
   }
   g.globalAlpha = 1;
-  for (let i = 0; i < big.length; i += 3) glow(g, big[i], big[i + 1], 5, "#ffb35c", big[i + 2] * 0.45);
+  const bigA = clamp((od - R_EARTH - 6e6) / 8e6);
+  if (bigA > 0) for (let i = 0; i < big.length; i += 3) glow(g, big[i], big[i + 1], 5, "#ffb35c", big[i + 2] * 0.35 * bigA);
   g.restore();
 };
 
@@ -626,12 +756,12 @@ const drawNetwork = (g: G, c: Cam, f: number, a: number) => {
 export const drawEarthBack = (g: G, c: Cam, f: number) => {
   const D = c.D;
   drawStars(g, c, f, clamp((D - 1.5e6) / 4e6));
-  drawBase(g, c, clamp((D - 4e4) / 2.5e5));
+  drawBase(g, c, f, clamp((D - 3e4) / 1.6e5), clamp((D - 1.8e6) / 5e6));
 };
 
 export const drawEarthFront = (g: G, c: Cam, f: number) => {
   const D = c.D;
-  drawLights(g, c, f, clamp((D - 3e6) / 6e6));
+  drawLights(g, c, f, clamp((D - 1.4e6) / 4e6));
   drawAtmosphere(g, c, f, clamp((D - 2.5e6) / 5e6));
   drawNetwork(g, c, f, clamp((D - 3e5) / 1e6));
 };

@@ -1,230 +1,95 @@
 import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
-import { Canvas, glow, mix, withAlpha } from "../lib/canvas";
+import { Canvas, glow, mix, rgbOf, withAlpha } from "../lib/canvas";
 import { C, FONT_CN, FONT_MONO } from "../lib/theme";
 import { clamp, ease, hash, lerp, noise1, prog, shake, TAU } from "../lib/math";
-import { camera, type Cam } from "../lib/three";
+import type { Cam } from "../lib/three";
 import { Captions } from "../components/Caption";
 import { ChapterCard, Flash } from "../components/Hud";
-import { cue, sceneDuration, ticks } from "../timeline";
+import {
+  camOf,
+  camSpeed,
+  CLIMB,
+  climbK,
+  curveAt,
+  END,
+  FLASH,
+  H0,
+  H_HERE,
+  HERE,
+  IGNITE,
+  MARK,
+  MILESTONES,
+  PASS,
+  PASS_1947,
+  poseAt,
+  revealK,
+  ribR,
+  rushAt,
+  settleK,
+  S_END,
+  S_HERE,
+  SMP,
+  sOfU,
+  U_HERE,
+  WAVE,
+  yearAt,
+  Z_HERE,
+  zOf,
+  type V3,
+} from "./finale/world";
 
-const DUR = sceneDuration("finale");
-const CLIMB = cue("finale", "climb");
-const HERE = cue("finale", "here");
-const FLASH = cue("finale", "flash");
-const END = cue("finale", "end");
-
-const IGNITE = cue("finale", "ignite"); // the ribbon lights up from 1946 onward as the chapter card clears
-const STOP = HERE + 6; // the camera comes to rest beside the marker
-const REVEAL0 = HERE + 16; // ...then pulls back to show the whole 80-year curve
-const WAVE0 = cue("finale", "wave"); // the final doubling wave races along the whole curve
-// The camera passes each pylon / ring on these frames (the soundtrack puts a hit on each one).
-const PYLON_T = ticks("finale", "pylon");
-const RING_T = ticks("finale", "ring");
-
-// ---------------------------------------------------------------------------------------------
-// The curve: a glowing exponential laid out in 3D. z = years since 1946, height grows as e^(t/5).
-// World: Y points down, the ground is y = 0, so height h sits at y = -h.
-const U0 = 1946;
-const U_HERE = 2024; // "you are here" (never labelled with a year)
-const TY = 5;
-const H0 = 0.5;
-const H_HERE = 100;
-const H_MAX = 420;
-const AMP = (H_HERE - H0) / (Math.exp((U_HERE - U0) / TY) - 1);
-const hOf = (u: number) => (u <= U0 ? H0 : H0 + AMP * (Math.exp((u - U0) / TY) - 1));
-const dhOf = (u: number) => (u <= U0 ? 0 : (AMP / TY) * Math.exp((u - U0) / TY));
-/** Ribbon width (world x): widens into a wall as the curve climbs. */
-const bandW = (h: number) => 1.4 + 1.2 * clamp(h / H_HERE);
-
-type Smp = { u: number; z: number; h: number; s: number; tz: number; th: number };
-const SMP: Smp[] = (() => {
-  const out: Smp[] = [];
-  let u = 1925;
-  let s = u - U0;
-  for (;;) {
-    const d = dhOf(u);
-    const len = Math.hypot(1, d);
-    const h = hOf(u);
-    out.push({ u, z: u - U0, h, s, tz: 1 / len, th: d / len });
-    if (h > H_MAX) break;
-    const ds = h > 160 ? 1.5 : 0.35;
-    const du = ds / len;
-    s += du * Math.hypot(1, dhOf(u + du / 2));
-    u += du;
-  }
-  return out;
-})();
-const I_START = SMP.findIndex((p) => p.u >= U0);
-
-const lerpSmp = (a: Smp, b: Smp, t: number): Smp => ({
-  u: lerp(a.u, b.u, t),
-  z: lerp(a.z, b.z, t),
-  h: lerp(a.h, b.h, t),
-  s: lerp(a.s, b.s, t),
-  tz: lerp(a.tz, b.tz, t),
-  th: lerp(a.th, b.th, t),
-});
-
-/** Curve point at arc length s (s = 0 at 1946; negative = before, flat). */
-const curveAt = (s: number): Smp => {
-  if (s <= SMP[0].s) return SMP[0];
-  let lo = 0;
-  let hi = SMP.length - 1;
-  if (s >= SMP[hi].s) return SMP[hi];
-  while (hi - lo > 1) {
-    const m = (lo + hi) >> 1;
-    if (SMP[m].s <= s) lo = m;
-    else hi = m;
-  }
-  return lerpSmp(SMP[lo], SMP[hi], (s - SMP[lo].s) / (SMP[hi].s - SMP[lo].s));
-};
-const sOfU = (u: number) => {
-  let lo = 0;
-  let hi = SMP.length - 1;
-  while (hi - lo > 1) {
-    const m = (lo + hi) >> 1;
-    if (SMP[m].u <= u) lo = m;
-    else hi = m;
-  }
-  return lerp(SMP[lo].s, SMP[hi].s, clamp((u - SMP[lo].u) / (SMP[hi].u - SMP[lo].u)));
-};
-const S_HERE = sOfU(U_HERE);
-
+// =============================================================================================
 // Colour along the curve: dim amber past -> cyan -> magenta -> white-hot present.
 const colAt = (u: number) =>
-  u < 1997
+  u < 1996
     ? C.amber
-    : u < 2005
-      ? mix(C.amber, C.cyan, (u - 1997) / 8)
-      : u < 2010
+    : u < 2006
+      ? mix(C.amber, C.cyan, (u - 1996) / 10)
+      : u < 2013
         ? C.cyan
-        : u < 2017
-          ? mix(C.cyan, C.magenta, (u - 2010) / 7)
-          : mix(C.magenta, "#ffffff", clamp((u - 2017) / 7) * 0.85);
-const PAL_U0 = 1990;
-const PAL_U1 = 2025;
-const PAL = Array.from({ length: 48 }, (_, i) => colAt(lerp(PAL_U0, PAL_U1, i / 47)));
-const palAt = (u: number) => PAL[Math.round(clamp((u - PAL_U0) / (PAL_U1 - PAL_U0)) * 47)];
-/** Brightness along the curve: the flat past is dim. */
-const intAt = (u: number) => lerp(0.45, 1, ease.inOutQuad(clamp((u - 1988) / 24)));
-/** Sky grade by altitude: warm dusk -> deep blue -> violet -> magenta. */
-const SKY: [number, string][] = [
-  [0, "#2a1606"],
-  [0.04, "#0a1c3c"],
-  [0.22, "#08294f"],
-  [0.5, "#2a1050"],
-  [1, "#561248"],
+        : u < 2020
+          ? mix(C.cyan, C.magenta, (u - 2013) / 7)
+          : u < U_HERE
+            ? mix(C.magenta, "#fff4fb", ((u - 2020) / (U_HERE - 2020)) * 0.9)
+            : mix("#ffe2f4", "#fff1d6", clamp((u - U_HERE) / 4));
+const LUT0 = 1940;
+const LUT1 = 2032;
+const LUT = Array.from({ length: 93 }, (_, i) => colAt(lerp(LUT0, LUT1, i / 92)));
+const palAt = (u: number) => LUT[Math.round(clamp((u - LUT0) / (LUT1 - LUT0)) * 92)];
+const S_COL = SMP.map((c) => colAt(c.u));
+const S_HOT = S_COL.map((c) => mix(c, "#ffffff", 0.7));
+const S_INT = SMP.map((c) => lerp(0.6, 1, ease.inOutQuad(clamp((c.u - 1990) / 26))));
+const S_R = SMP.map((c) => ribR(c.h));
+const I_WALL = SMP.findIndex((c) => c.u >= 2001);
+const I_TOP = SMP.findIndex((c) => c.h >= H_HERE * 2.4);
+/** Past the marker the curve dissolves into the unknown. */
+const beyondA = (h: number, len: number) => (h <= H_HERE ? 1 : Math.exp(-(h - H_HERE) / len));
+
+// =============================================================================================
+// Timing.
+const IGN_LEN = 112; // the ignition front races from 1946 to the top of the curve, accelerating
+const litS = (f: number) => (f < IGNITE ? -1e9 : 1.5 + S_END * ease.inCubic(prog(f, IGNITE, IGNITE + IGN_LEN)));
+const frameLit = (s: number) => IGNITE + IGN_LEN * Math.cbrt(clamp(s / S_END));
+const W_END = S_HERE + 150;
+const waveS = (f: number) => (f < WAVE ? -1e9 : lerp(-6, W_END, ease.inCubic(prog(f, WAVE, FLASH))));
+const frameWave = (s: number) => WAVE + (FLASH - WAVE) * Math.cbrt(clamp((s + 6) / (W_END + 6)));
+const WAVE_HIT = frameWave(S_HERE);
+
+const CAPS = [
+  { from: 90, to: 200, text: "所以，计算机并不是“突然”变强的。" },
+  { from: 205, to: 320, text: "它是在80年里，一次又一次地翻倍。" },
+  { from: 330, to: 480, text: "指数曲线的前半段平淡得让人忽略，后半段陡峭得让人震撼" },
+  { from: 490, to: 605, text: "而我们，正站在这条曲线{{最陡峭的地方}}。" },
 ];
-const skyTint = (g: number) => {
-  for (let i = 1; i < SKY.length; i++) if (g <= SKY[i][0]) return mix(SKY[i - 1][1], SKY[i][1], (g - SKY[i - 1][0]) / (SKY[i][0] - SKY[i - 1][0]));
-  return SKY[SKY.length - 1][1];
-};
+/** 0..1 while a caption is on screen: the world sinks into black under the caption band. */
+const capA = (f: number) => Math.max(0, ...CAPS.map((c) => Math.min(clamp((f - c.from + 8) / 12), clamp((c.to + 8 - f) / 12))));
 
-// ---------------------------------------------------------------------------------------------
-// Camera: a chase rig that rides the curve (anchor = arc length), speed integrated from a profile.
-const VA = 0.12; // a gentle push while the chapter card plays
-const V1 = 0.5; // speed at the start of the climb (units / frame)
-const F_PEAK = HERE - 32;
-const S_FLIGHT_END = sOfU(2005) + 3; // camera passes the 2005 pylon right as the climb starts
-const L_END = 9; // look-ahead when settled: the camera looks straight at the marker
-const S_TOP = S_HERE - L_END;
-
-const speedAt = (f: number, v2: number) => {
-  if (f < 85) return VA;
-  if (f < CLIMB) return VA + (V1 - VA) * Math.pow((f - 85) / (CLIMB - 85), 0.9);
-  if (f < F_PEAK) return V1 * Math.pow(v2 / V1, (f - CLIMB) / (F_PEAK - CLIMB));
-  if (f < STOP) return v2 * 0.5 * (1 + Math.cos((Math.PI * (f - F_PEAK)) / (STOP - F_PEAK)));
-  return 0;
-};
-const integrate = (v2: number, f0: number, f1: number) => {
-  let acc = 0;
-  for (let f = f0; f < f1; f += 0.25) acc += speedAt(f + 0.125, v2) * 0.25;
-  return acc;
-};
-const V2 = (() => {
-  const need = S_TOP - S_FLIGHT_END;
-  let lo = V1;
-  let hi = 6;
-  for (let i = 0; i < 40; i++) {
-    const m = (lo + hi) / 2;
-    if (integrate(m, CLIMB, STOP) < need) lo = m;
-    else hi = m;
-  }
-  return (lo + hi) / 2;
-})();
-const ANCHOR = (() => {
-  const s0 = S_FLIGHT_END - integrate(V2, 0, CLIMB);
-  const out: number[] = [];
-  let s = s0;
-  for (let f = 0; f <= DUR + 2; f++) {
-    out.push(s);
-    s += integrate(V2, f, f + 1);
-  }
-  return out;
-})();
-const anchorAt = (f: number) => {
-  const i = clamp(Math.floor(f), 0, ANCHOR.length - 2);
-  return lerp(ANCHOR[i], ANCHOR[i + 1], clamp(f - i, 0, 1));
-};
-
-type V3 = [number, number, number];
-type Pose = { p: V3; t: V3; fl: number; cy: number; roll: number };
-const lerp3 = (a: V3, b: V3, t: number): V3 => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
-
-/** Chase rig: horizontal offset R at angle phi (0 = straight behind, pi/2 = beside), height dy above the anchor. */
-const chase = (f: number): Pose => {
-  const sa = anchorAt(f);
-  const c = curveAt(sa);
-  const k = ease.inOutCubic(prog(f, CLIMB - 30, CLIMB + 90));
-  const st = ease.inOutCubic(prog(f, F_PEAK - 24, STOP + 6));
-  const R = lerp(3.85, 10, k);
-  const phi = lerp(0.675, 0.98, k) + 0.08 * st;
-  const dy = lerp(0.55, -4.5, k) + 11 * st;
-  const bob = (noise1(f * 0.035 + 7) - 0.5) * 0.12 * (1 - k);
-  const p: V3 = [R * Math.sin(phi) + bob, -(c.h + dy) + bob * 0.6, c.z - R * Math.cos(phi)];
-  const c2 = curveAt(sa + lerp(11, L_END, k));
-  const t: V3 = [lerp(0.4, 0, k), -c2.h - 0.2 * (1 - k), c2.z];
-  const v = speedAt(f, V2);
-  const rush = f > CLIMB ? clamp((v - V1) / (V2 - V1)) : 0;
-  return {
-    p,
-    t,
-    fl: lerp(900, 700, ease.inOutQuad(rush)),
-    cy: lerp(492, 540, k),
-    roll: -0.2 * Math.sin(Math.PI * ease.inOutSine(prog(f, CLIMB - 10, STOP + 4))) + 0.012 * Math.sin(f * 0.021) * (1 - k),
-  };
-};
-
-const MARK: V3 = [0, -hOf(U_HERE), U_HERE - U0];
-// Wide reveal: the whole 80-year curve from a low side angle (lens shifted up so verticals stay vertical).
-const REVEAL: Pose = { p: [86, -10, 8], t: [0, -44, 58], fl: 640, cy: 410, roll: 0 };
-const SETTLE = chase(STOP);
-const revealK = (f: number) => ease.inOutCubic(prog(f, REVEAL0, WAVE0 - 2));
-
-const poseAt = (f: number): Pose => {
-  if (f <= STOP) return chase(f);
-  const k = revealK(f);
-  const p = lerp3(SETTLE.p, REVEAL.p, k);
-  const t = lerp3(SETTLE.t, REVEAL.t, k);
-  const p2 = p;
-  const k2 = ease.outCubic(prog(f, REVEAL0, WAVE0 - 30));
-  return { p: p2, t, fl: lerp(SETTLE.fl, REVEAL.fl, k), cy: lerp(SETTLE.cy, REVEAL.cy, k2), roll: lerp(SETTLE.roll, REVEAL.roll, k) };
-};
-
-const camOf = (pose: Pose): Cam => {
-  const [px, py, pz] = pose.p;
-  const dx = pose.t[0] - px;
-  const dy = pose.t[1] - py;
-  const dz = pose.t[2] - pz;
-  return camera({ x: px, y: py, z: pz, yaw: Math.atan2(dx, dz), pitch: Math.atan2(dy, Math.hypot(dx, dz)), f: pose.fl, cy: pose.cy });
-};
-
-// ---------------------------------------------------------------------------------------------
-// Projection helpers with near-plane clipping.
+// =============================================================================================
+// Projection with near-plane clipping.
 type View = { cam: Cam; cyw: number; syw: number; cp: number; sp: number };
 type Pt = { x: number; y: number; s: number; z: number };
-const NEAR = 0.2;
+const NEAR = 0.25;
 const mkView = (cam: Cam): View => ({ cam, cyw: Math.cos(cam.yaw), syw: Math.sin(cam.yaw), cp: Math.cos(cam.pitch), sp: Math.sin(cam.pitch) });
 const toCam = (v: View, X: number, Y: number, Z: number): V3 => {
   const x = X - v.cam.x;
@@ -238,29 +103,43 @@ const scr = (v: View, c: V3): Pt => {
   const s = v.cam.f / c[2];
   return { x: v.cam.cx + c[0] * s, y: v.cam.cy + c[1] * s, s, z: c[2] };
 };
-const proj = (v: View, X: number, Y: number, Z: number): Pt | null => {
+const proj = (v: View, X: number, Y: number, Z: number, near = NEAR): Pt | null => {
   const c = toCam(v, X, Y, Z);
-  return c[2] > NEAR ? scr(v, c) : null;
+  return c[2] > near ? scr(v, c) : null;
 };
-const viewAt = (f: number) => mkView(camOf(poseAt(f)));
-const cut = (a: V3, b: V3): V3 => {
-  const t = (NEAR - a[2]) / (b[2] - a[2]);
-  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, NEAR + 1e-4];
+const cut = (a: V3, b: V3, near = NEAR): V3 => {
+  const t = (near - a[2]) / (b[2] - a[2]);
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, near + 1e-4];
 };
-const clipPoly = (cs: V3[]): V3[] => {
-  const out: V3[] = [];
+const runs = (v: View, cs: V3[], near = NEAR): Pt[][] => {
+  const out: Pt[][] = [];
+  let cur: Pt[] = [];
+  for (let i = 0; i < cs.length; i++) {
+    const c = cs[i];
+    if (c[2] > near) {
+      if (!cur.length && i > 0) cur.push(scr(v, cut(cs[i - 1], c, near)));
+      cur.push(scr(v, c));
+    } else if (cur.length) {
+      cur.push(scr(v, cut(cs[i - 1], c, near)));
+      out.push(cur);
+      cur = [];
+    }
+  }
+  if (cur.length) out.push(cur);
+  return out;
+};
+const pathRuns = (ctx: CanvasRenderingContext2D, rs: Pt[][]) => {
+  ctx.beginPath();
+  for (const r of rs) r.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+};
+const fillPoly = (ctx: CanvasRenderingContext2D, v: View, cs: V3[], style: string | CanvasGradient) => {
+  const c: V3[] = [];
   for (let i = 0; i < cs.length; i++) {
     const a = cs[i];
     const b = cs[(i + 1) % cs.length];
-    const ina = a[2] > NEAR;
-    const inb = b[2] > NEAR;
-    if (ina) out.push(a);
-    if (ina !== inb) out.push(cut(a, b));
+    if (a[2] > NEAR) c.push(a);
+    if (a[2] > NEAR !== b[2] > NEAR) c.push(cut(a, b));
   }
-  return out;
-};
-const fillPoly = (ctx: CanvasRenderingContext2D, v: View, cs: V3[], style: string | CanvasGradient) => {
-  const c = clipPoly(cs);
   if (c.length < 3) return;
   ctx.beginPath();
   c.forEach((p, i) => {
@@ -272,900 +151,1172 @@ const fillPoly = (ctx: CanvasRenderingContext2D, v: View, cs: V3[], style: strin
   ctx.fillStyle = style;
   ctx.fill();
 };
-/** Clip a 3D polyline (camera space) into visible screen-space runs. */
-const runs = (v: View, cs: V3[]): Pt[][] => {
-  const out: Pt[][] = [];
-  let cur: Pt[] = [];
-  for (let i = 0; i < cs.length; i++) {
-    const c = cs[i];
-    if (c[2] > NEAR) {
-      if (!cur.length && i > 0) cur.push(scr(v, cut(cs[i - 1], c)));
-      cur.push(scr(v, c));
-    } else if (cur.length) {
-      cur.push(scr(v, cut(cs[i - 1], c)));
-      out.push(cur);
-      cur = [];
-    }
-  }
-  if (cur.length) out.push(cur);
-  return out;
-};
-const strokeRuns = (ctx: CanvasRenderingContext2D, rs: Pt[][]) => {
-  ctx.beginPath();
-  for (const r of rs)
-    r.forEach((p, i) => {
-      if (i) ctx.lineTo(p.x, p.y);
-      else ctx.moveTo(p.x, p.y);
-    });
-  ctx.stroke();
-};
 
-// ---------------------------------------------------------------------------------------------
-// Milestones. Pylons line the flat road; rings circle the wall.
-const MILESTONES = [
-  { year: 1946, label: "真空管", col: C.amber },
-  { year: 1947, label: "晶体管", col: C.cyan },
-  { year: 1958, label: "集成电路", col: C.cyan },
-  { year: 1971, label: "微处理器", col: C.green },
-  { year: 2005, label: "多核", col: C.blue },
-  { year: 2012, label: "深度学习", col: C.violet },
-  { year: 2022, label: "大模型", col: C.magenta },
-];
-const PYLON_DEF = [
-  { m: 0, x: -3.2, minRise: 96 },
-  { m: 1, x: 6.0, minRise: 108 },
-  { m: 2, x: -2.8, minRise: 150 },
-  { m: 3, x: 8.4, minRise: 0 },
-  { m: 4, x: -2.8, minRise: 0 },
-];
-const RING_DEF = [5, 6];
-const camZAt = (f: number) => poseAt(f).p[2];
-/** First frame at which fn(f) >= v (fn increasing). */
-const firstFrame = (fn: (f: number) => number, v: number, from = 0) => {
-  for (let f = from; f < DUR; f += 0.5) if (fn(f) >= v) return f;
-  return DUR;
-};
-// pass = the frame the camera draws level with the pylon (= ticks.pylon)
-const PYLONS = PYLON_DEF.map((d, i) => {
-  const ms = MILESTONES[d.m];
-  const z = ms.year - U0;
-  return { ...ms, x: d.x, z, rise: Math.max(d.minRise, firstFrame(camZAt, z - 24)), pass: PYLON_T[i] };
-});
-// pass = the frame the ring sweeps down through the middle of the frame (= ticks.ring)
-const RINGS = RING_DEF.map((m, i) => {
-  const ms = MILESTONES[m];
-  return { ...ms, c: curveAt(sOfU(ms.year)), pass: RING_T[i] };
-});
-
-// ---------------------------------------------------------------------------------------------
-// Deterministic particle sets.
-const DUST = Array.from({ length: 1500 }, (_, i) => {
-  const climb = i % 5 !== 0; // most dust lives around the wall
-  const s = climb ? sOfU(2003) + hash(i * 3.17 + 1) * (S_HERE + 30 - sOfU(2003)) : -32 + hash(i * 3.17 + 1) * 97;
-  const c = curveAt(s);
-  const lat = -8 + hash(i * 5.31 + 2) * (climb ? 24 : 18);
-  const nrm = climb ? -2 + hash(i * 7.77 + 3) * 16 : 0.1 + Math.pow(hash(i * 7.77 + 3), 1.6) * 5;
-  const along = (hash(i * 9.13 + 4) - 0.5) * 2;
-  const y = -c.h - nrm * c.tz - along * c.th;
-  const z = c.z - nrm * c.th + along * c.tz;
-  return { x: lat, y: Math.min(-0.05, y), z, u: c.u, r: hash(i * 1.9 + 5), tw: hash(i * 2.7 + 6) * 50, flat: !climb };
-});
-const STARS = Array.from({ length: 520 }, (_, i) => {
-  const az = hash(i * 4.1 + 11) * TAU;
-  const el = Math.asin(0.03 + 0.97 * hash(i * 6.3 + 12));
-  return { d: [Math.cos(el) * Math.sin(az), -Math.sin(el), Math.cos(el) * Math.cos(az)] as V3, b: Math.pow(hash(i * 8.9 + 13), 3), tw: hash(i * 3.3 + 14) * 40 };
-});
-
-// ---------------------------------------------------------------------------------------------
-const lit = (f: number) => (f - IGNITE) * 2.4; // arc length reached by the ignition front
-const S_WAVE_END = S_HERE + 300;
-const waveS = (f: number) => (f < WAVE0 ? -1e9 : lerp(-2, S_WAVE_END, ease.inCubic(prog(f, WAVE0, FLASH + 2))));
-/** Frame at which the wave reaches arc length s. */
-const waveAt = (s: number) => firstFrame(waveS, s, WAVE0);
-const WAVE_HIT = waveAt(S_HERE);
-/** Overall energy grade: 0 in the flat past, 1 at the top. */
-const gradeAt = (f: number) => clamp(curveAt(anchorAt(Math.min(f, STOP))).h / H_HERE);
-
-const CAPS = [
-  { from: 90, to: 200, text: "所以，计算机并不是“突然”变强的。" },
-  { from: 205, to: 320, text: "它是在80年里，一次又一次地翻倍。" },
-  { from: 330, to: 480, text: "指数曲线的前半段平淡得让人忽略，后半段陡峭得让人震撼" },
-  { from: 490, to: 605, text: "而我们，正站在这条曲线{{最陡峭的地方}}。" },
-];
-/** 0..1: how much a caption is on screen (the world dims under the caption band). */
-const capA = (f: number) => Math.max(0, ...CAPS.map((c) => Math.min(clamp((f - c.from + 6) / 12), clamp((c.to + 6 - f) / 12))));
-
-// Strands: the steep part of the curve extruded sideways into a wall of light.
-const STRANDS = Array.from({ length: 40 }, (_, i) => {
-  const side = i % 2 ? 1 : -1;
-  const k = Math.floor(i / 2);
-  return { x: side * (1.9 + k * 0.62 + hash(i * 3.3 + 90) * 0.4), a: 0.25 + 0.75 * hash(i * 5.1 + 91), sp: 0.7 + hash(i * 7.9 + 92) * 1.2, ph: hash(i * 9.7 + 93) };
-});
-const I_WALL = SMP.findIndex((p) => p.u >= 2003);
-
-type Lbl = { x: number; y: number; size: number; year: string; text: string; col: string; a: number; align: CanvasTextAlign };
-
-const drawWorld = (ctx: CanvasRenderingContext2D, w: number, h: number, f: number) => {
-  const pose = poseAt(f);
-  const cam = camOf(pose);
-  const v = mkView(cam);
-  const prev = viewAt(f - (f > CLIMB && f < STOP ? 2.6 : 1.6));
-  const grade = gradeAt(f);
-  const rk = revealK(f);
-  const fogNear = lerp(20, 60, ease.inOutQuad(grade)) + 160 * rk;
-  const fogFar = fogNear * 2.6;
-  const fog = (d: number) => clamp(1 - (d - fogNear) / (fogFar - fogNear));
-  const wS = waveS(f);
-  const litS = lit(f);
-  const dist = (x: number, y: number, z: number) => Math.hypot(x - v.cam.x, y - v.cam.y, z - v.cam.z);
-  const labels: Lbl[] = [];
-
-  ctx.save();
-  ctx.translate(w / 2, h / 2);
-  ctx.rotate(pose.roll);
-  ctx.translate(-w / 2, -h / 2);
-
-  // --- sky & ground ------------------------------------------------------------------------
-  const horizon = cam.cy - cam.f * Math.tan(cam.pitch);
-  const tint = skyTint(grade * (1 - 0.6 * rk));
-  const skyTop = mix("#010208", tint, 0.18);
-  const skyHor = mix("#05040a", tint, 0.7);
-  const sky = ctx.createLinearGradient(0, horizon - 1300, 0, horizon);
-  sky.addColorStop(0, skyTop);
-  sky.addColorStop(0.7, mix(skyTop, skyHor, 0.45));
-  sky.addColorStop(1, skyHor);
-  ctx.fillStyle = sky;
-  ctx.fillRect(-300, -300, w + 600, h + 600);
-  if (horizon < h + 300) {
-    const gr = ctx.createLinearGradient(0, horizon, 0, horizon + 520);
-    gr.addColorStop(0, mix("#05040a", tint, 0.42));
-    gr.addColorStop(0.25, mix("#030206", tint, 0.12));
-    gr.addColorStop(1, "#010102");
-    ctx.fillStyle = gr;
-    ctx.fillRect(-300, horizon, w + 600, h + 600 - horizon);
-  }
-  // stars (directions at infinity)
-  for (const st of STARS) {
-    const c = toCam(v, v.cam.x + st.d[0], v.cam.y + st.d[1], v.cam.z + st.d[2]);
-    if (c[2] <= 0.05) continue;
-    const q = scr(v, c);
-    if (q.x < -50 || q.x > w + 50 || q.y < -50 || q.y > Math.min(h + 50, horizon)) continue;
-    const tw = 0.6 + 0.4 * Math.sin(f * 0.08 + st.tw);
-    const a = (0.25 + 0.75 * st.b) * tw * clamp(-st.d[1] * 6);
-    ctx.fillStyle = `rgba(220,230,255,${a * 0.8})`;
-    const r = 0.8 + st.b * 1.6;
-    ctx.fillRect(q.x - r / 2, q.y - r / 2, r, r);
-  }
-
-  ctx.globalCompositeOperation = "lighter";
-  // horizon haze
-  if (horizon > -200 && horizon < h + 200) {
-    const hz = ctx.createLinearGradient(0, horizon - 200, 0, horizon + 90);
-    hz.addColorStop(0, withAlpha(tint, 0));
-    hz.addColorStop(0.69, withAlpha(tint, 0.2));
-    hz.addColorStop(1, withAlpha(tint, 0));
-    ctx.fillStyle = hz;
-    ctx.fillRect(-300, horizon - 200, w + 600, 290);
-  }
-
-  // light pouring down from above as we near the top
-  {
-    const la = ease.inQuad(clamp((grade - 0.3) / 0.7)) * (1 - rk) + 0.6 * prog(f, WAVE_HIT - 8, FLASH);
-    if (la > 0.01) {
-      const g = ctx.createLinearGradient(0, -300, 0, h * 0.7);
-      g.addColorStop(0, withAlpha("#ffe6f8", 0.5 * la));
-      g.addColorStop(0.4, withAlpha(C.magenta, 0.14 * la));
-      g.addColorStop(1, withAlpha(C.magenta, 0));
-      ctx.fillStyle = g;
-      ctx.fillRect(-300, -300, w + 600, h * 0.7 + 300);
-    }
-  }
-
-  // --- ground grid ---------------------------------------------------------------------------
-  const gridPass = (step: number, ext: number, near: number, far: number, base: number) => {
-    const buckets: Pt[][][] = [[], [], [], [], [], []];
-    const camX = v.cam.x;
-    const camZ = v.cam.z;
-    const x0 = Math.floor((camX - ext) / step) * step;
-    const z0 = Math.floor((camZ - ext) / step) * step;
-    const add = (ax: number, az: number, bx: number, bz: number) => {
-      const d = Math.hypot((ax + bx) / 2 - camX, (az + bz) / 2 - camZ, v.cam.y);
-      const a = clamp(1 - (d - near) / (far - near));
-      if (a <= 0.02) return;
-      const rs = runs(v, [toCam(v, ax, 0, az), toCam(v, bx, 0, bz)]);
-      if (!rs.length) return;
-      buckets[Math.min(5, Math.floor(a * 6))].push(...rs);
-    };
-    const seg = step * 2;
-    for (let x = x0; x <= camX + ext; x += step) for (let z = z0; z < camZ + ext; z += seg) add(x, z, x, z + seg);
-    for (let z = z0; z <= camZ + ext; z += step) for (let x = x0; x < camX + ext; x += seg) add(x, z, x + seg, z);
-    ctx.lineWidth = 1.2;
-    buckets.forEach((b, i) => {
-      if (!b.length) return;
-      ctx.strokeStyle = withAlpha(mix("#4f7dff", tint, 0.3), base * ((i + 0.5) / 6));
-      strokeRuns(ctx, b);
-    });
-  };
-  if (v.cam.y < 0 && horizon < h + 100) {
-    gridPass(2, 46, 6, 46, 0.3 * (1 - rk));
-    gridPass(10, 220, 20, 220, 0.25 * clamp(-v.cam.y / 15 + rk));
-  }
-
-  // --- glow pools on the ground under the flat ribbon -------------------------------------------
-  for (let s = 0; s < Math.min(litS, sOfU(2010)); s += 2.5) {
-    const c = curveAt(s);
-    const p = proj(v, 0, 0, c.z);
-    if (!p) continue;
-    const d = dist(0, 0, c.z);
-    const squash = clamp(Math.abs(v.cam.y) / d + 0.08);
-    const r = 3.2 * p.s;
-    if (r < 2) continue;
-    const a = 0.16 * intAt(c.u) * fog(d);
-    if (a < 0.01) continue;
-    ctx.globalAlpha = a;
-    ctx.drawImage(spriteFor(palAt(c.u)), p.x - r, p.y - r * squash, r * 2, r * 2 * squash);
-    ctx.globalAlpha = 1;
-  }
-
-  // --- the future glow, high above -------------------------------------------------------------
-  {
-    const p = proj(v, 0, -hOf(U_HERE) * 2.4, U_HERE - U0 + 4);
-    const a = 0.12 + 0.9 * ease.inQuad(grade) * (1 - 0.5 * rk) + 0.9 * prog(f, WAVE_HIT - 6, FLASH);
-    if (p) {
-      glow(ctx, p.x, p.y, 1100 + 900 * grade, C.magenta, 0.24 * a, 0.02);
-      glow(ctx, p.x, p.y, 520 + 500 * grade, "#ffffff", 0.32 * a, 0.03);
-    }
-  }
-
-  // --- pylons -----------------------------------------------------------------------------------
-  for (const py of PYLONS) {
-    const z = py.z;
-    const r = ease.outCubic(prog(f, py.rise, py.rise + 26));
-    if (r <= 0) continue;
-    const top = Math.max(2.5, hOf(py.year) + 1.4) * r;
-    const base = proj(v, py.x, 0, z);
-    const tp = proj(v, py.x, -top, z);
-    const d = dist(py.x, -top / 2, z);
-    const fa = fog(d);
-    if (fa <= 0.01) continue;
-    const pass = f - py.pass;
-    const kick = pass >= 0 ? Math.exp(-pass / 10) : 0;
-    const wv = f >= waveAt(sOfU(py.year)) ? Math.exp(-(f - waveAt(sOfU(py.year))) / 8) : 0;
-    const boost = 1 + 1.5 * kick + 2.5 * wv;
-    // beam into the sky
-    const sky = runs(v, [toCam(v, py.x, -top, z), toCam(v, py.x, -top - 40, z)]);
-    if (sky.length && tp) {
-      const end = sky[0][sky[0].length - 1];
-      const g = ctx.createLinearGradient(tp.x, tp.y, end.x, end.y);
-      g.addColorStop(0, withAlpha(py.col, 0.26 * fa * r * Math.min(2, boost)));
-      g.addColorStop(1, withAlpha(py.col, 0));
-      ctx.strokeStyle = g;
-      ctx.lineWidth = clamp(0.25 * tp.s, 1, 24);
-      strokeRuns(ctx, sky);
-    }
-    const shaft = runs(v, [toCam(v, py.x, 0, z), toCam(v, py.x, -top, z)]);
-    if (shaft.length) {
-      const sc = (tp ?? base)?.s ?? 50;
-      ctx.lineCap = "round";
-      ctx.strokeStyle = withAlpha(py.col, 0.16 * fa * boost);
-      ctx.lineWidth = clamp(0.5 * sc, 3, 60);
-      strokeRuns(ctx, shaft);
-      ctx.strokeStyle = withAlpha(mix(py.col, "#ffffff", 0.5), 0.9 * fa * Math.min(1.5, boost));
-      ctx.lineWidth = clamp(0.06 * sc, 1.2, 7);
-      strokeRuns(ctx, shaft);
-      ctx.lineCap = "butt";
-    }
-    // ground ring (pulses outward as the camera passes)
-    const ring: V3[] = [];
-    const rr = 0.7 + (pass >= 0 ? 2 * (1 - Math.exp(-pass / 12)) : 0);
-    for (let i = 0; i <= 32; i++) ring.push(toCam(v, py.x + Math.cos((i / 32) * TAU) * rr, 0, z + Math.sin((i / 32) * TAU) * rr));
-    ctx.strokeStyle = withAlpha(py.col, 0.6 * fa * (pass >= 0 ? Math.exp(-pass / 25) * 0.8 + 0.2 : 1));
-    ctx.lineWidth = 2;
-    strokeRuns(ctx, runs(v, ring));
-    if (base) {
-      const sq = clamp(Math.abs(v.cam.y) / d + 0.06);
-      const rp = 1.6 * base.s;
-      ctx.globalAlpha = Math.min(1, 0.35 * fa * boost);
-      ctx.drawImage(spriteFor(py.col), base.x - rp, base.y - rp * sq, rp * 2, rp * 2 * sq);
-      ctx.globalAlpha = 1;
-    }
-    if (tp) {
-      glow(ctx, tp.x, tp.y, clamp(0.9 * tp.s, 6, 120) * (1 + 0.6 * kick + wv), py.col, 0.9 * fa * Math.min(1.6, boost));
-      const la = fa * (1 - clamp(rk * 3)) * ease.outCubic(prog(f, py.rise + 10, py.rise + 30)) * clamp((tp.x + 80) / 160) * clamp((w + 80 - tp.x) / 160);
-      if (la > 0.02)
-        labels.push({ x: tp.x, y: tp.y - clamp(0.55 * tp.s, 14, 70), size: clamp(0.5 * tp.s, 24, 56), year: String(py.year), text: py.label, col: py.col, a: la, align: "center" });
-    }
-  }
-
-  // --- the ribbon and the light under it ----------------------------------------------------------
-  const sEnd = Math.min(litS, SMP[SMP.length - 1].s);
-  type RP = { c: Smp; m: V3; l: V3; r: V3; g: V3; a: number; col: string };
-  const pts: RP[] = [];
-  for (let i = I_START; i < SMP.length; i++) {
-    const c = SMP[i];
-    if (c.s > sEnd) break;
-    const d = dist(0, -c.h, c.z);
-    const beyond = c.u > U_HERE ? Math.exp(-(c.h - H_HERE) / (H_HERE * 0.45)) : 1;
-    const energized = wS > c.s ? 1 + 1.6 * Math.exp(-(wS - c.s) / 50) : 1;
-    const bw = bandW(c.h) / 2;
-    pts.push({
-      c,
-      m: toCam(v, 0, -c.h, c.z),
-      l: toCam(v, -bw, -c.h, c.z),
-      r: toCam(v, bw, -c.h, c.z),
-      g: toCam(v, 0, 0, c.z),
-      a: intAt(c.u) * fog(d) * beyond * energized * clamp((sEnd - c.s) / 3 + 0.2),
-      col: wS > c.s && wS - c.s < 30 ? "#ffffff" : palAt(c.u),
-    });
-  }
-  const K = 5;
-  for (let i0 = 0; i0 < pts.length - 1; i0 += K) {
-    const i1 = Math.min(pts.length - 1, i0 + K);
-    const mid = pts[(i0 + i1) >> 1];
-    if (mid.a < 0.01) continue;
-    const seg = pts.slice(i0, i1 + 1);
-    const hot = 1 + 0.8 * clamp(mid.c.h / H_HERE);
-    // curtain: the area under the curve, a wall of light fading toward the ground
-    if (mid.c.h > 0.9) {
-      const top = seg[0].m[2] > NEAR && seg[seg.length - 1].m[2] > NEAR ? scr(v, mid.m) : null;
-      const bot = mid.g[2] > NEAR ? scr(v, mid.g) : null;
-      const ca = 0.2 * mid.a * clamp((mid.c.h - 0.9) / 4);
-      let style: string | CanvasGradient = withAlpha(mid.col, ca * 0.4);
-      if (top && bot) {
-        const g = ctx.createLinearGradient(top.x, top.y, bot.x, bot.y);
-        g.addColorStop(0, withAlpha(mid.col, ca));
-        g.addColorStop(0.35, withAlpha(mid.col, ca * 0.35));
-        g.addColorStop(1, withAlpha(mid.col, ca * 0.05));
-        style = g;
-      }
-      fillPoly(ctx, v, [...seg.map((p) => p.m), ...seg.map((p) => p.g).reverse()], style);
-    }
-    // screen-space halo (tube-like bloom), only away from the near plane
-    if (seg.every((p) => p.m[2] > 2.2)) {
-      const sp = seg.map((p) => scr(v, p.m));
-      const halo = (wWorld: number, minPx: number, maxPx: number, alpha: number) => {
-        const L: [number, number][] = [];
-        const R: [number, number][] = [];
-        for (let j = 0; j < sp.length; j++) {
-          const gi = i0 + j;
-          const pa = pts[Math.max(0, gi - 1)];
-          const pb = pts[Math.min(pts.length - 1, gi + 1)];
-          if (pa.m[2] <= NEAR || pb.m[2] <= NEAR) return;
-          const qa = scr(v, pa.m);
-          const qb = scr(v, pb.m);
-          let tx = qb.x - qa.x;
-          let ty = qb.y - qa.y;
-          const tl = Math.hypot(tx, ty) || 1;
-          tx /= tl;
-          ty /= tl;
-          const hw = clamp(wWorld * sp[j].s, minPx, maxPx) / 2;
-          L.push([sp[j].x - ty * hw, sp[j].y + tx * hw]);
-          R.push([sp[j].x + ty * hw, sp[j].y - tx * hw]);
-        }
-        ctx.beginPath();
-        L.forEach(([x, y], j) => (j ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
-        for (let j = R.length - 1; j >= 0; j--) ctx.lineTo(R[j][0], R[j][1]);
-        ctx.closePath();
-        ctx.fillStyle = withAlpha(mid.col, alpha);
-        ctx.fill();
-      };
-      halo(bandW(mid.c.h) * 3.2, 14, 150, 0.06 * mid.a * hot);
-      halo(bandW(mid.c.h) * 1.2, 6, 60, 0.11 * mid.a * hot);
-    }
-    // surface (world-space ribbon)
-    fillPoly(ctx, v, [...seg.map((p) => p.l), ...seg.map((p) => p.r).reverse()], withAlpha(mid.col, (0.3 - 0.17 * clamp(mid.c.h / H_HERE)) * mid.a));
-    // edges + core
-    const sMid = mid.m[2] > NEAR ? v.cam.f / mid.m[2] : 400;
-    ctx.lineJoin = "round";
-    ctx.strokeStyle = withAlpha(mix(mid.col, "#ffffff", 0.35), Math.min(1, 1.1 * mid.a));
-    ctx.lineWidth = clamp(0.045 * sMid, 1, 6);
-    strokeRuns(ctx, runs(v, seg.map((p) => p.l)));
-    strokeRuns(ctx, runs(v, seg.map((p) => p.r)));
-    ctx.strokeStyle = withAlpha(mix(mid.col, "#ffffff", 0.7), Math.min(1, 0.6 * mid.a * hot));
-    ctx.lineWidth = clamp(0.1 * sMid, 1.5, 12);
-    strokeRuns(ctx, runs(v, seg.map((p) => p.m)));
-  }
-  // the strand wall: the steep curve extruded sideways into a sheet of light
-  {
-    const wallA = (0.25 + 0.75 * ease.inOutQuad(prog(f, CLIMB - 6, CLIMB + 30))) * ease.inOutQuad(prog(f, 240, 300)) * (1 - 0.65 * rk);
-    const front = f < CLIMB - 4 ? sOfU(2009) + (f - 240) * 0.08 : sOfU(2009) + (f - CLIMB + 4) * 4.5;
-    const wallEnd = Math.min(sEnd, front);
-    if (wallA > 0.01) {
-      const SK = 8;
-      for (const st of STRANDS) {
-        const fall = Math.exp(-Math.abs(st.x) / 7) * st.a * wallA;
-        for (let i0 = I_WALL; i0 < SMP.length - 1; i0 += SK) {
-          const i1 = Math.min(SMP.length - 1, i0 + SK);
-          const cm = SMP[(i0 + i1) >> 1];
-          if (cm.s > wallEnd) break;
-          const rise = clamp((cm.u - 2004) / 8) * clamp((wallEnd - cm.s) / 12);
-          const beyond = cm.u > U_HERE ? Math.exp(-(cm.h - H_HERE) / (H_HERE * 0.7)) : 1;
-          const a = fall * rise * beyond * intAt(cm.u) * fog(dist(st.x, -cm.h, cm.z));
-          if (a < 0.01) continue;
-          const cs: V3[] = [];
-          for (let i = i0; i <= i1; i++) cs.push(toCam(v, st.x, -SMP[i].h, SMP[i].z));
-          const rs = runs(v, cs);
-          if (!rs.length) continue;
-          const sc = v.cam.f / Math.max(1, dist(st.x, -cm.h, cm.z));
-          ctx.strokeStyle = withAlpha(palAt(cm.u), 0.16 * a);
-          ctx.lineWidth = clamp(0.5 * sc, 2, 30);
-          strokeRuns(ctx, rs);
-          ctx.strokeStyle = withAlpha(mix(palAt(cm.u), "#ffffff", 0.3), 0.8 * a);
-          ctx.lineWidth = clamp(0.05 * sc, 1, 4);
-          strokeRuns(ctx, rs);
-        }
-        // light running up each strand
-        for (let j = 0; j < 2; j++) {
-          const span = S_HERE + 40 - sOfU(2004);
-          const s = sOfU(2004) + ((st.ph + j * 0.5 + f * st.sp * 0.006) % 1) * span;
-          if (s > wallEnd) continue;
-          const c = curveAt(s);
-          const c0 = curveAt(s - 4 - 3 * st.sp);
-          const rs = runs(v, [toCam(v, st.x, -c0.h, c0.z), toCam(v, st.x, -c.h, c.z)]);
-          if (!rs.length) continue;
-          const d = dist(st.x, -c.h, c.z);
-          const a = fall * clamp((c.u - 2004) / 8) * fog(d);
-          ctx.strokeStyle = withAlpha(mix(palAt(c.u), "#ffffff", 0.6), 0.9 * a);
-          ctx.lineWidth = clamp((0.12 * v.cam.f) / Math.max(1, d), 1.5, 8);
-          strokeRuns(ctx, rs);
-        }
-      }
-    }
-  }
-  // the wall ignites as the curve turns upward
-  if (f >= CLIMB - 4 && f < CLIMB + 40) {
-    const c = curveAt(sOfU(2009));
-    const p = proj(v, 0, -c.h, c.z);
-    const t = f - CLIMB + 4;
-    if (p) {
-      glow(ctx, p.x, p.y, 200 + t * 40, C.cyan, 0.8 * Math.exp(-t / 10), 0.04);
-      glow(ctx, p.x, p.y, 60 + t * 10, "#ffffff", Math.exp(-t / 6));
-    }
-  }
-  // rungs every two years ("doublings")
-  for (let yr = 1946; yr <= 2030; yr += 2) {
-    const s = sOfU(yr);
-    if (s > sEnd) break;
-    const c = curveAt(s);
-    const d = dist(0, -c.h, c.z);
-    const beyond = c.u > U_HERE ? Math.exp(-(c.h - H_HERE) / (H_HERE * 0.6)) : 1;
-    const a = intAt(c.u) * fog(d) * beyond;
-    if (a < 0.02) continue;
-    const bw = bandW(c.h) * 0.75;
-    const rs = runs(v, [toCam(v, -bw, -c.h, c.z), toCam(v, bw, -c.h, c.z)]);
-    if (!rs.length) continue;
-    ctx.strokeStyle = withAlpha(mix(palAt(c.u), "#ffffff", 0.4), 0.6 * a);
-    ctx.lineWidth = clamp((0.06 * v.cam.f) / Math.max(0.5, d), 1, 5);
-    strokeRuns(ctx, rs);
-  }
-  // origin node
-  {
-    const p = proj(v, 0, -H0, 0);
-    const ia = ease.outCubic(prog(f, IGNITE - 6, IGNITE + 10));
-    if (p && ia > 0) {
-      glow(ctx, p.x, p.y, clamp(1.4 * p.s, 10, 220) * (1 + 2 * Math.exp(-Math.max(0, f - IGNITE) / 8)), C.amber, 0.9 * ia);
-      glow(ctx, p.x, p.y, clamp(0.35 * p.s, 4, 60), "#ffffff", ia);
-    }
-  }
-  // ignition front
-  if (f > IGNITE && litS < S_HERE + 260) {
-    const c = curveAt(litS);
-    const p = proj(v, 0, -c.h, c.z);
-    if (p) {
-      const fa = fog(dist(0, -c.h, c.z));
-      glow(ctx, p.x, p.y, clamp(2.4 * p.s, 20, 400), palAt(c.u), 0.9 * fa);
-      glow(ctx, p.x, p.y, clamp(0.6 * p.s, 6, 90), "#ffffff", fa);
-    }
-  }
-  // energy pulses riding the ribbon
-  const LOOP = S_HERE + 30;
-  for (let k = 0; k < 14; k++) {
-    const s = ((k / 14) * LOOP + f * 0.9) % LOOP;
-    if (s > sEnd) continue;
-    const c = curveAt(s);
-    const p = proj(v, 0, -c.h, c.z);
-    if (!p) continue;
-    const a = intAt(c.u) * fog(dist(0, -c.h, c.z));
-    glow(ctx, p.x, p.y, clamp(1.1 * p.s, 4, 120), palAt(c.u), 0.7 * a);
-    glow(ctx, p.x, p.y, clamp(0.25 * p.s, 2, 26), "#ffffff", 0.8 * a);
-  }
-  // flow particles (streaks racing along the ribbon)
-  for (let i = 0; i < 300; i++) {
-    const spd = 0.5 + hash(i * 2.3 + 40) * 0.9;
-    const s = (hash(i * 7.1 + 41) * LOOP + f * spd) % LOOP;
-    if (s > sEnd || s < 0) continue;
-    const c = curveAt(s);
-    const c0 = curveAt(s - spd * 2.2);
-    const x = (hash(i * 3.9 + 42) - 0.5) * bandW(c.h) * 0.9;
-    const lift = 0.05 + hash(i * 5.5 + 43) * 0.25;
-    const rs = runs(v, [toCam(v, x, -c0.h - lift * c0.tz, c0.z + lift * c0.th), toCam(v, x, -c.h - lift * c.tz, c.z + lift * c.th)]);
-    if (!rs.length) continue;
-    const d = dist(x, -c.h, c.z);
-    const a = intAt(c.u) * fog(d);
-    if (a < 0.02) continue;
-    ctx.strokeStyle = withAlpha(mix(palAt(c.u), "#ffffff", 0.5), 0.8 * a);
-    ctx.lineWidth = clamp((0.05 * v.cam.f) / Math.max(0.5, d), 0.8, 4);
-    strokeRuns(ctx, rs);
-  }
-  // the doubling wave: a white-hot head with a long trail
-  if (wS > -1) {
-    for (let k = 0; k < 16; k++) {
-      const s = wS - k * 2.5;
-      if (s < 0) continue;
-      const c = curveAt(s);
-      const p = proj(v, 0, -c.h, c.z);
-      if (!p) continue;
-      const fall = Math.exp(-k / 5);
-      glow(ctx, p.x, p.y, clamp(6 * p.s, 50, 600) * (0.4 + 0.6 * fall), k < 2 ? "#ffffff" : palAt(c.u), 0.9 * fall);
-    }
-  }
-
-  // --- rings on the wall: 2012, 2022 ---------------------------------------------------------------
-  for (const rg of RINGS) {
-    const c = rg.c;
-    if (c.s > sEnd) continue;
-    const pass = f - rg.pass;
-    const app = ease.outBack(clamp((f - (rg.pass - 55)) / 22));
-    const gone = 1 - ease.inQuad(prog(f, rg.pass + 4, rg.pass + 22)) * (1 - rk);
-    if (app <= 0 || gone <= 0.01) continue;
-    const d = dist(0, -c.h, c.z);
-    const fa = fog(d) * gone;
-    const kick = pass >= 0 ? Math.exp(-pass / 10) : 0;
-    const ringPts = (R: number) => {
-      const out: V3[] = [];
-      for (let i = 0; i <= 48; i++) {
-        const a = (i / 48) * TAU;
-        const x = Math.cos(a) * R;
-        const n = Math.sin(a) * R;
-        out.push(toCam(v, x, -c.h - n * c.tz, c.z - n * c.th)); // N = (0, -tz, -th)
-      }
-      return out;
-    };
-    const R = (bandW(c.h) / 2 + 1.4) * app;
-    const sc = v.cam.f / Math.max(1, d);
-    for (const [wd, al] of [
-      [0.5, 0.18],
-      [0.18, 0.4],
-      [0.05, 1],
-    ] as const) {
-      ctx.strokeStyle = withAlpha(al === 1 ? mix(rg.col, "#ffffff", 0.45) : rg.col, al * fa * (1 + 1.5 * kick));
-      ctx.lineWidth = clamp(wd * sc, 1, 80);
-      strokeRuns(ctx, runs(v, ringPts(R)));
-    }
-    if (pass >= 0 && pass < 40) {
-      ctx.strokeStyle = withAlpha(rg.col, 0.8 * Math.exp(-pass / 10));
-      ctx.lineWidth = clamp(0.12 * sc, 1, 20);
-      strokeRuns(ctx, runs(v, ringPts(R + pass * 0.7)));
-    }
-    const lp = proj(v, R + 0.6, -c.h, c.z);
-    if (lp) {
-      const la = fa * (1 - clamp(rk * 4)) * clamp(app) * clamp((lp.y + 60) / 120) * clamp((720 - lp.y) / 100);
-      if (la > 0.02) labels.push({ x: lp.x + 14, y: lp.y, size: clamp(0.38 * lp.s, 34, 60), year: String(rg.year), text: rg.label, col: rg.col, a: la, align: "left" });
-    }
-  }
-
-  // --- dust & speed streaks -----------------------------------------------------------------------
-  for (const p of DUST) {
-    const a1 = toCam(v, p.x, p.y, p.z);
-    if (a1[2] <= NEAR) continue;
-    const q1 = scr(v, a1);
-    if (q1.x < -200 || q1.x > w + 200 || q1.y < -200 || q1.y > h + 200) continue;
-    const fa = fog(dist(p.x, p.y, p.z));
-    if (fa < 0.02) continue;
-    const d = a1[2];
-    const tw = 0.55 + 0.45 * Math.sin(f * 0.09 + p.tw);
-    const col = palAt(p.u);
-    const al = (0.2 + 0.6 * p.r) * fa * tw * clamp(d / 1.2) * (1 - 0.7 * rk) * (p.flat ? 0.5 : 1);
-    const lw = clamp((0.035 * v.cam.f) / d, 0.8, 3.5);
-    const a0 = toCam(prev, p.x, p.y, p.z);
-    if (a0[2] > NEAR) {
-      const q0 = scr(prev, a0);
-      const len = Math.hypot(q1.x - q0.x, q1.y - q0.y);
-      if (len > 4) {
-        ctx.strokeStyle = withAlpha(mix(col, "#ffffff", 0.4), al * clamp(40 / len + 0.3));
-        ctx.lineWidth = lw;
-        ctx.beginPath();
-        ctx.moveTo(q0.x, q0.y);
-        ctx.lineTo(q1.x, q1.y);
-        ctx.stroke();
-        continue;
-      }
-    }
-    ctx.fillStyle = withAlpha(mix(col, "#ffffff", 0.4), al);
-    ctx.fillRect(q1.x - lw / 2, q1.y - lw / 2, lw, lw);
-  }
-
-  // --- reveal: the whole history as a chart --------------------------------------------------------
-  if (rk > 0.02) {
-    const la = ease.outCubic(prog(rk, 0.72, 0.95));
-    const LEAD = [54, 118, 54, 86, 54];
-    MILESTONES.forEach((ms, k) => {
-      const c = curveAt(sOfU(ms.year));
-      const p = proj(v, 0, -c.h, c.z);
-      if (!p) return;
-      const wv = f >= waveAt(c.s) ? Math.exp(-(f - waveAt(c.s)) / 10) : 0;
-      glow(ctx, p.x, p.y, 16 + 30 * wv, ms.col, 0.9 * rk);
-      glow(ctx, p.x, p.y, 5 + 6 * wv, "#ffffff", rk);
-      if (la <= 0.01) return;
-      ctx.globalCompositeOperation = "source-over";
-      ctx.strokeStyle = withAlpha(ms.col, 0.75 * la);
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      if (k < 5) {
-        ctx.moveTo(p.x, p.y - 8);
-        ctx.lineTo(p.x, p.y - LEAD[k]);
-        labels.push({ x: p.x, y: p.y - LEAD[k] - 8, size: 26, year: String(ms.year), text: ms.label, col: ms.col, a: la * clamp((800 - p.y) / 40), align: "center" });
-      } else {
-        ctx.moveTo(p.x + 10, p.y);
-        ctx.lineTo(p.x + 44, p.y);
-        labels.push({ x: p.x + 52, y: p.y + 30, size: 28, year: String(ms.year), text: ms.label, col: ms.col, a: la, align: "left" });
-      }
-      ctx.stroke();
-      ctx.globalCompositeOperation = "lighter";
-    });
-  }
-
-  // --- you are here ------------------------------------------------------------------------------
-  if (f > HERE - 20) {
-    const p = proj(v, MARK[0], MARK[1], MARK[2]);
-    if (p) {
-      const a = ease.outCubic(prog(f, HERE - 20, HERE + 5));
-      const pulse = 0.75 + 0.25 * Math.sin((f - HERE) * 0.22);
-      const hit = f >= WAVE_HIT ? f - WAVE_HIT : -1;
-      glow(ctx, p.x, p.y, clamp(2 * p.s, 60, 170) * pulse * (1 + (hit >= 0 ? hit * 0.6 : 0)), C.gold, 0.75 * a);
-      glow(ctx, p.x, p.y, clamp(0.45 * p.s, 14, 40) * (1 + (hit >= 0 ? hit * 0.3 : 0)), "#ffffff", a);
-      for (let k = 0; k < 3; k++) {
-        const tt = f - HERE + k * 20;
-        if (tt < 0) continue;
-        const t = (tt % 60) / 60;
-        ctx.strokeStyle = withAlpha(C.gold, 0.8 * (1 - t) * a);
-        ctx.lineWidth = 3 * (1 - t) + 1;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 18 + t * 120, 0, TAU);
-        ctx.stroke();
-      }
-    }
-  }
-  // pre-flash bloom: light pours down from the top of the curve
-  if (f > WAVE_HIT - 4) {
-    const p = proj(v, MARK[0], MARK[1], MARK[2]);
-    const t = prog(f, WAVE_HIT - 4, FLASH);
-    const x = p ? p.x : w / 2;
-    const y = p ? p.y : 0;
-    glow(ctx, x, y, 300 + 2600 * ease.inQuad(t), "#ffffff", 0.9 * t, 0.15);
-    glow(ctx, x, y, 200 + 1600 * t, C.gold, 0.6 * t, 0.05);
-  }
-
-  ctx.restore();
-  bloom(ctx, w, h, lerp(0.55, 0.9, grade) * (1 - 0.3 * rk) + 0.6 * prog(f, WAVE_HIT - 8, FLASH));
-  ctx.save();
-  ctx.translate(w / 2, h / 2);
-  ctx.rotate(pose.roll);
-  ctx.translate(-w / 2, -h / 2);
-  ctx.globalCompositeOperation = "source-over";
-  // --- labels ------------------------------------------------------------------------------------------
-  for (const L of labels) {
-    const wEst = L.size * 2.6;
-    const xl = L.align === "center" ? L.x - wEst / 2 : L.x;
-    const safe = clamp((xl - 70) / 70) * clamp((w - 70 - (xl + wEst)) / 70) * clamp((L.y - L.size * 1.9 - 60) / 50);
-    if (L.a * safe <= 0.01) continue;
-    ctx.globalAlpha = L.a * safe;
-    ctx.textAlign = L.align;
-    ctx.textBaseline = "alphabetic";
-    ctx.shadowColor = "rgba(0,0,0,0.95)";
-    ctx.shadowBlur = 12;
-    ctx.font = `800 ${Math.round(L.size)}px ${FONT_MONO}`;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillText(L.year, L.x, L.y - L.size * 0.88);
-    ctx.font = `700 ${Math.round(L.size * 0.8)}px ${FONT_CN}`;
-    ctx.fillStyle = mix(L.col, "#ffffff", 0.3);
-    ctx.fillText(L.text, L.x, L.y);
-    ctx.shadowBlur = 0;
-  }
-  ctx.globalAlpha = 1;
-  ctx.restore();
-  // keep the caption band calm: the world sinks into black under the subtitles
-  const ca = capA(f);
-  if (ca > 0) {
-    const g = ctx.createLinearGradient(0, 740, 0, h);
-    g.addColorStop(0, "rgba(0,0,0,0)");
-    g.addColorStop(0.4, `rgba(0,0,0,${0.72 * ca})`);
-    g.addColorStop(1, `rgba(0,0,0,${0.94 * ca})`);
-    ctx.globalCompositeOperation = "destination-out";
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 740, w, h - 740);
-    ctx.globalCompositeOperation = "source-over";
-  }
-};
-
-let bloomBuf: HTMLCanvasElement | null = null;
-/** Cheap bloom: blur a quarter-size copy, square it (soft threshold), add it back. */
-const bloom = (ctx: CanvasRenderingContext2D, w: number, h: number, k: number) => {
-  if (k <= 0.01) return;
-  if (!bloomBuf) {
-    bloomBuf = document.createElement("canvas");
-    bloomBuf.width = 480;
-    bloomBuf.height = 270;
-  }
-  const b = bloomBuf.getContext("2d")!;
-  b.globalCompositeOperation = "source-over";
-  b.globalAlpha = 1;
-  b.clearRect(0, 0, 480, 270);
-  b.filter = "blur(6px)";
-  b.drawImage(ctx.canvas, 0, 0, 480, 270);
-  b.filter = "none";
-  b.globalCompositeOperation = "multiply";
-  b.drawImage(bloomBuf, 0, 0);
-  ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.globalCompositeOperation = "lighter";
-  ctx.globalAlpha = Math.min(1, k);
-  ctx.drawImage(bloomBuf, 0, 0, w, h);
-  ctx.restore();
-};
-
-const spriteCache = new Map<string, HTMLCanvasElement>();
-/** Soft disc sprite (no white core) used for flattened ground light pools. */
-const spriteFor = (col: string) => {
-  const hit = spriteCache.get(col);
+// =============================================================================================
+// Sprites.
+const softCache = new Map<string, HTMLCanvasElement>();
+/** Soft disc without a white core (flattened ground light pools). */
+const soft = (col: string) => {
+  const hit = softCache.get(col);
   if (hit) return hit;
   const c = document.createElement("canvas");
   c.width = c.height = 128;
   const g = c.getContext("2d")!;
   const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
   grad.addColorStop(0, withAlpha(col, 0.9));
-  grad.addColorStop(0.35, withAlpha(col, 0.35));
+  grad.addColorStop(0.3, withAlpha(col, 0.4));
   grad.addColorStop(1, withAlpha(col, 0));
   g.fillStyle = grad;
   g.fillRect(0, 0, 128, 128);
-  spriteCache.set(col, c);
+  softCache.set(col, c);
   return c;
+};
+
+// =============================================================================================
+// Scenery: pylons on the flat road, gates on the wall, dust, stars.
+const PYL_TOP = 2.9;
+const PYLONS = [
+  { m: 0, x: -4.4 },
+  { m: 1, x: 5.0 },
+  { m: 2, x: -4.4 },
+  { m: 3, x: 5.4 },
+  { m: 4, x: -4.6 },
+].map((d) => {
+  const ms = MILESTONES[d.m];
+  const s = sOfU(ms.year);
+  const pass = d.m === 1 ? PASS_1947 : PASS[ms.year as keyof typeof PASS];
+  return { ...ms, x: d.x, z: zOf(ms.year), rise: frameLit(Math.max(0, s)) + 3 + (d.m === 1 ? 3 : 0), pass };
+});
+const GATE_R = 6.2;
+const GATES = [5, 6].map((m) => {
+  const ms = MILESTONES[m];
+  const s = sOfU(ms.year);
+  return { ...ms, c: curveAt(s), rise: frameLit(s), pass: PASS[ms.year as keyof typeof PASS] };
+});
+const BEADS = Array.from({ length: 40 }, (_, k) => {
+  const u = 1946 + 2 * k;
+  const s = sOfU(u);
+  return { u, s, c: curveAt(s), at: frameLit(s) };
+});
+const MOTES = Array.from({ length: 460 }, (_, i) => ({
+  x: (hash(i * 5.31 + 2) - 0.5) * 34,
+  y: -(0.12 + Math.pow(hash(i * 7.77 + 3), 1.7) * 7),
+  z: -34 + hash(i * 3.17 + 1) * 168,
+  r: hash(i * 1.9 + 5),
+  tw: hash(i * 2.7 + 6) * 50,
+}));
+const S_SP0 = sOfU(2003);
+const SPARKS = Array.from({ length: 1800 }, (_, i) => {
+  const s = S_SP0 + hash(i * 3.71 + 11) * (S_HERE + 90 - S_SP0);
+  const c = curveAt(s);
+  const x = (hash(i * 5.13 + 12) - 0.5) * 32;
+  const n = -1.5 + Math.pow(hash(i * 7.29 + 13), 1.25) * 17;
+  return { x, y: Math.min(-0.2, -c.h - n * c.tz), z: c.z - n * c.th, u: c.u, r: hash(i * 1.3 + 14), tw: hash(i * 2.1 + 15) * 50 };
+});
+const STARS = Array.from({ length: 640 }, (_, i) => {
+  const az = hash(i * 4.1 + 11) * TAU;
+  const el = Math.asin(0.02 + 0.98 * hash(i * 6.3 + 12));
+  return { d: [Math.cos(el) * Math.sin(az), -Math.sin(el), Math.cos(el) * Math.cos(az)] as V3, b: Math.pow(hash(i * 8.9 + 13), 3), tw: hash(i * 3.3 + 14) * 40 };
+});
+const STRANDS = Array.from({ length: 26 }, (_, i) => {
+  const side = i % 2 ? 1 : -1;
+  const k = (i >> 1) + 1;
+  return { x: side * (k * 0.92 + (hash(i * 3.3 + 90) - 0.5) * 0.3), a: 0.35 + 0.65 * hash(i * 5.1 + 91) };
+});
+const SHEET = 12.5;
+const RUNG_STEP = 3.4;
+
+// Sky grade by altitude.
+const HOR: [number, string][] = [
+  [0, "#2e1807"],
+  [0.06, "#1b1631"],
+  [0.3, "#0e1d46"],
+  [0.65, "#240c44"],
+  [1, "#2c0a36"],
+];
+const ZEN: [number, string][] = [
+  [0, "#020208"],
+  [0.5, "#080518"],
+  [1, "#090312"],
+];
+const grad = (stops: [number, string][], g: number) => {
+  for (let i = 1; i < stops.length; i++) if (g <= stops[i][0]) return mix(stops[i - 1][1], stops[i][1], (g - stops[i - 1][0]) / (stops[i][0] - stops[i - 1][0]));
+  return stops[stops.length - 1][1];
+};
+
+type Lbl = { x: number; y: number; size: number; year: string; text: string; col: string; a: number; align: CanvasTextAlign; fixed?: boolean };
+
+// Reveal labels: screen offsets from each milestone node (staggered so nothing collides).
+const REV_LBL: { dx: number; dy: number; align: CanvasTextAlign }[] = [
+  { dx: 0, dy: -64, align: "center" },
+  { dx: 0, dy: -150, align: "center" },
+  { dx: 0, dy: -64, align: "center" },
+  { dx: 0, dy: -64, align: "center" },
+  { dx: -36, dy: -150, align: "right" },
+  { dx: 44, dy: 26, align: "left" },
+  { dx: 44, dy: 26, align: "left" },
+];
+
+// =============================================================================================
+const drawWorld = (ctx: CanvasRenderingContext2D, w: number, h: number, f: number) => {
+  const pose = poseAt(f);
+  const cam = camOf(pose);
+  const v = mkView(cam);
+  const rush = rushAt(f);
+  const kc = climbK(f);
+  const rk = revealK(f);
+  const ks = settleK(f) * (1 - rk);
+  const bLen = lerp(22, 85, rk);
+  const bA = (hh: number) => beyondA(hh, bLen);
+  const prev = mkView(camOf(poseAt(f - 1.2 - 1.6 * rush)));
+  const grade = clamp(-cam.y / H_HERE);
+  const lit = litS(f);
+  const wS = waveS(f);
+  const labels: Lbl[] = [];
+  const preA = prog(f, WAVE_HIT - 10, FLASH); // the build into the flash
+  const dist = (x: number, y: number, z: number) => Math.hypot(x - cam.x, y - cam.y, z - cam.z);
+  // fog: near things crisp, the far wall hazy (but always present); none in the wide reveal
+  const fog = (d: number) => lerp(Math.exp(-Math.max(0, d - 26) / 170), 1, rk);
+
+  ctx.save();
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate(pose.roll);
+  ctx.translate(-w / 2, -h / 2);
+
+  // --- sky ------------------------------------------------------------------------------------
+  const horizon = cam.cy - cam.f * Math.tan(cam.pitch);
+  const sg = Math.max(grade, 0.42 * rk);
+  const hor = grad(HOR, sg);
+  const zen = grad(ZEN, sg);
+  {
+    const top = horizon - cam.f * 2.6;
+    const g = ctx.createLinearGradient(0, top, 0, horizon);
+    g.addColorStop(0, zen);
+    g.addColorStop(0.62, mix(zen, hor, 0.35));
+    g.addColorStop(1, hor);
+    ctx.fillStyle = g;
+    ctx.fillRect(-400, -400, w + 800, h + 800);
+  }
+  // ground plane
+  if (horizon < h + 400) {
+    const g = ctx.createLinearGradient(0, horizon, 0, horizon + 460);
+    g.addColorStop(0, mix("#030308", hor, 0.55));
+    g.addColorStop(0.18, mix("#020205", hor, 0.18));
+    g.addColorStop(1, "#010103");
+    ctx.fillStyle = g;
+    ctx.fillRect(-400, horizon, w + 800, Math.max(0, h + 400 - horizon));
+  }
+  // stars
+  const starA = 1 - 0.65 * grade;
+  for (const st of STARS) {
+    const c = toCam(v, cam.x + st.d[0], cam.y + st.d[1], cam.z + st.d[2]);
+    if (c[2] <= 0.05) continue;
+    const q = scr(v, c);
+    if (q.x < -60 || q.x > w + 60 || q.y < -60 || q.y > Math.min(h + 60, horizon - 4)) continue;
+    const tw = 0.6 + 0.4 * Math.sin(f * 0.08 + st.tw);
+    const a = (0.2 + 0.8 * st.b) * tw * clamp(-st.d[1] * 8) * starA;
+    const r = 0.9 + st.b * 1.8;
+    ctx.fillStyle = `rgba(225,232,255,${(a * 0.85).toFixed(3)})`;
+    ctx.fillRect(q.x - r / 2, q.y - r / 2, r, r);
+  }
+
+  ctx.globalCompositeOperation = "lighter";
+  // horizon haze
+  if (horizon > -300 && horizon < h + 300) {
+    const hz = ctx.createLinearGradient(0, horizon - 260, 0, horizon + 70);
+    const hc = mix(sg < 0.1 ? C.amber : hor, hor, clamp(sg * 6));
+    hz.addColorStop(0, withAlpha(hc, 0));
+    hz.addColorStop(0.78, withAlpha(hc, 0.16 + 0.08 * (1 - sg)));
+    hz.addColorStop(1, withAlpha(hc, 0));
+    ctx.fillStyle = hz;
+    ctx.fillRect(-400, horizon - 260, w + 800, 330);
+  }
+  // the light of the future, high above the top of the curve
+  {
+    const p = proj(v, 0, -H_HERE * 2.3, Z_HERE + 8, 0.5);
+    const a = 0.18 + 0.75 * ease.inQuad(grade) * (1 - 0.35 * rk) + 0.25 * rk + 1.2 * preA;
+    if (p) {
+      glow(ctx, p.x, p.y, 1300 + 700 * grade, C.magenta, 0.2 * a, 0.02);
+      glow(ctx, p.x, p.y, 640 + 420 * grade, "#ffe6f6", 0.28 * a, 0.03);
+    }
+  }
+
+  // high up, light pours down from where the curve is heading
+  {
+    const la = ease.inQuad(clamp((grade - 0.5) / 0.5)) * (1 - rk) + 0.5 * preA;
+    if (la > 0.01) {
+      const p = proj(v, 0, -H_HERE - 90, Z_HERE + 2, 0.5);
+      const gx = p ? clamp(p.x, -200, w + 200) : w / 2;
+      const gy = p ? clamp(p.y, -320, h) : -320;
+      const g = ctx.createRadialGradient(gx, gy, 0, gx, gy, 1300);
+      g.addColorStop(0, withAlpha("#fff0fa", 0.7 * la));
+      g.addColorStop(0.28, withAlpha("#ff9ae0", 0.3 * la));
+      g.addColorStop(0.62, withAlpha(C.magenta, 0.07 * la));
+      g.addColorStop(1, withAlpha(C.magenta, 0));
+      ctx.fillStyle = g;
+      ctx.fillRect(-400, -400, w + 800, h + 800);
+    }
+  }
+
+  // --- ground grid --------------------------------------------------------------------------------
+  const gridPass = (step: number, ext: number, ahead: number, near: number, far: number, base: number, col: string) => {
+    if (base <= 0.005) return;
+    const buckets: Pt[][][] = [[], [], [], [], [], []];
+    const x0 = Math.floor((cam.x - ext) / step) * step;
+    const z0 = Math.floor((cam.z - ext * 0.3) / step) * step;
+    const z1 = cam.z + ahead;
+    const add = (ax: number, az: number, bx: number, bz: number) => {
+      const d = Math.hypot((ax + bx) / 2 - cam.x, (az + bz) / 2 - cam.z, cam.y);
+      const a = clamp(1 - (d - near) / (far - near));
+      if (a <= 0.02) return;
+      const rs = runs(v, [toCam(v, ax, 0, az), toCam(v, bx, 0, bz)]);
+      if (rs.length) buckets[Math.min(5, Math.floor(a * 6))].push(...rs);
+    };
+    const seg = step * 3;
+    for (let x = x0; x <= cam.x + ext; x += step) for (let z = z0; z < z1; z += seg) add(x, z, x, z + seg);
+    for (let z = z0; z <= z1; z += step) for (let x = x0; x < cam.x + ext; x += seg) add(x, z, x + seg, z);
+    ctx.lineWidth = 1.3;
+    buckets.forEach((b, i) => {
+      if (!b.length) return;
+      ctx.strokeStyle = withAlpha(col, base * ((i + 0.5) / 6));
+      pathRuns(ctx, b);
+      ctx.stroke();
+    });
+  };
+  if (horizon < h + 200) {
+    const gcol = mix("#4a6bff", hor, 0.25);
+    gridPass(2, 48, 120, 4, 70, 0.3 * (1 - kc) * (1 - rk) + 0.12 * rk, gcol);
+    gridPass(20, 520, 640, 30, 600, 0.2 * clamp(grade * 3 + rk + 0.4), gcol);
+  }
+
+  // --- the ribbon's reflection and light pools on the ground ----------------------------------------
+  const sLit = Math.min(lit, S_END);
+  for (let i = 0; i < SMP.length; i += 6) {
+    const c = SMP[i];
+    if (c.s > sLit || c.h > 4) break;
+    const p = proj(v, 0, 0, c.z, 0.6);
+    if (!p || p.x < -400 || p.x > w + 400) continue;
+    const d = dist(0, 0, c.z);
+    const r = 3 * p.s;
+    if (r < 3) continue;
+    const squash = clamp(Math.abs(cam.y) / d + 0.06);
+    ctx.globalAlpha = 0.22 * S_INT[i] * fog(d) * (1 - 0.6 * rk);
+    ctx.drawImage(soft(S_COL[i]), p.x - r, p.y - r * squash, r * 2, r * 2 * squash);
+  }
+  ctx.globalAlpha = 1;
+
+  // --- tube renderer (used for the ribbon and its mirror image) ------------------------------------------
+  type TP = { x: number; y: number; s: number; d: number; i: number };
+  const tubePts = (mirror: boolean, sEnd: number, near: number) => {
+    const out: (TP | null)[] = [];
+    for (let i = 0; i < SMP.length; i++) {
+      const c = SMP[i];
+      if (c.s > sEnd) break;
+      const cc = toCam(v, 0, mirror ? c.h : -c.h, c.z);
+      if (cc[2] <= near) {
+        out.push(null);
+        continue;
+      }
+      const sc = v.cam.f / cc[2];
+      out.push({ x: v.cam.cx + cc[0] * sc, y: v.cam.cy + cc[1] * sc, s: sc, d: cc[2], i });
+    }
+    return out;
+  };
+  const LAYERS = [
+    { m: 5.2, a: 0.03, lo: 7, hi: 230, hot: false },
+    { m: 3.1, a: 0.045, lo: 5, hi: 160, hot: false },
+    { m: 1.75, a: 0.09, lo: 3, hi: 104, hot: false },
+    { m: 1.0, a: 0.3, lo: 1.8 + 3 * rk, hi: 70, hot: false },
+    { m: 0.36, a: 0.95, lo: 0.9 + 1.3 * rk, hi: 24, hot: true },
+  ];
+  const drawTube = (g: CanvasRenderingContext2D, pts: (TP | null)[], alphaOf: (i: number, d: number) => number, colOf: (i: number, hot: boolean) => string, layerIdx: number[], mul: number) => {
+    let a0 = 0;
+    while (a0 < pts.length) {
+      while (a0 < pts.length && !pts[a0]) a0++;
+      let a1 = a0;
+      while (a1 < pts.length && pts[a1]) a1++;
+      const run = pts.slice(a0, a1) as TP[];
+      a0 = a1;
+      const n = run.length;
+      if (n < 2) continue;
+      const nx = new Float32Array(n);
+      const ny = new Float32Array(n);
+      for (let j = 0; j < n; j++) {
+        const pa = run[Math.max(0, j - 1)];
+        const pb = run[Math.min(n - 1, j + 1)];
+        const tx = pb.x - pa.x;
+        const ty = pb.y - pa.y;
+        const l = Math.hypot(tx, ty) || 1;
+        nx[j] = -ty / l;
+        ny[j] = tx / l;
+      }
+      const K = 5;
+      for (let j0 = 0; j0 < n - 1; j0 += K) {
+        const j1 = Math.min(n - 1, j0 + K);
+        const mid = run[(j0 + j1) >> 1];
+        const al = alphaOf(mid.i, mid.d) * mul;
+        if (al < 0.004) continue;
+        let minX = 1e9;
+        let maxX = -1e9;
+        let minY = 1e9;
+        let maxY = -1e9;
+        for (let j = j0; j <= j1; j++) {
+          minX = Math.min(minX, run[j].x);
+          maxX = Math.max(maxX, run[j].x);
+          minY = Math.min(minY, run[j].y);
+          maxY = Math.max(maxY, run[j].y);
+        }
+        if (maxX < -340 || minX > w + 340 || maxY < -340 || minY > h + 340) continue;
+        for (const li of layerIdx) {
+          const L = LAYERS[li];
+          g.beginPath();
+          for (let j = j0; j <= j1; j++) {
+            const p = run[j];
+            const r = clamp(S_R[p.i] * L.m * p.s, L.lo, L.hi);
+            if (j === j0) g.moveTo(p.x + nx[j] * r, p.y + ny[j] * r);
+            else g.lineTo(p.x + nx[j] * r, p.y + ny[j] * r);
+          }
+          for (let j = j1; j >= j0; j--) {
+            const p = run[j];
+            const r = clamp(S_R[p.i] * L.m * p.s, L.lo, L.hi);
+            g.lineTo(p.x - nx[j] * r, p.y - ny[j] * r);
+          }
+          g.closePath();
+          g.fillStyle = withAlpha(colOf(mid.i, L.hot), Math.min(1, L.a * al));
+          g.fill();
+        }
+      }
+    }
+  };
+  const waveBoost = (s: number) => (wS > s ? 1 + 2.4 * Math.exp(-(wS - s) / 34) : 1);
+  const tubeAlpha = (i: number, d: number) => {
+    const c = SMP[i];
+    const front = clamp((sLit - c.s) / 4 + 0.15);
+    // past the marker the curve breaks into dashes that drift upward and fade into the unknown
+    const beyond = c.u > U_HERE ? bA(c.h) * lerp(0.12, 1, ease.inOutQuad(0.5 + 0.5 * Math.sin(c.s * 0.75 - f * 0.22))) : 1;
+    const calm = c.u > 2018 ? 1 - 0.6 * ks : 1; // at rest, the marker outshines the ribbon
+    return S_INT[i] * fog(d) * beyond * front * waveBoost(c.s) * calm * (1 + 0.6 * preA);
+  };
+  const tubeCol = (i: number, hot: boolean) => {
+    const c = SMP[i];
+    if (wS > c.s && wS - c.s < 26) return "#ffffff";
+    return hot ? S_HOT[i] : S_COL[i];
+  };
+  // soft glow buffer (quarter res, blurred on the way back): outer halos and the mirror image
+  const hb = haloBuffers();
+  const hg = hb.a.getContext("2d")!;
+  hg.setTransform(1, 0, 0, 1, 0, 0);
+  hg.globalCompositeOperation = "source-over";
+  hg.clearRect(0, 0, HB_W, HB_H);
+  hg.setTransform(HB_W / w, 0, 0, HB_H / h, 0, 0);
+  hg.translate(w / 2, h / 2);
+  hg.rotate(pose.roll);
+  hg.translate(-w / 2, -h / 2);
+  hg.globalCompositeOperation = "lighter";
+  if (lit > 0) {
+    // mirror image in the glossy ground
+    drawTube(hg, tubePts(true, Math.min(sLit, sOfU(2008)), 1.2), (i, d) => tubeAlpha(i, d) * 0.4 * (1 - rk) * Math.exp(-SMP[i].h / 2.5), tubeCol, [1, 2, 3], 1);
+  }
+
+  // --- the area under the curve: a curtain of light falling to the ground --------------------------------
+  if (lit > 0) {
+    const K = 6;
+    for (let i0 = 0; i0 < SMP.length - 1; i0 += K) {
+      const i1 = Math.min(SMP.length - 1, i0 + K);
+      const cm = SMP[(i0 + i1) >> 1];
+      if (cm.s > sLit) break;
+      if (cm.h > H_HERE * 2.4) break;
+      const d = dist(0, -cm.h, cm.z);
+      const a = 0.16 * S_INT[i0] * fog(d) * bA(cm.h) * clamp((sLit - cm.s) / 6) * waveBoost(cm.s) * (1 + 1.6 * rk);
+      if (a < 0.006) continue;
+      const top: V3[] = [];
+      const bot: V3[] = [];
+      let nearest = 1e9;
+      for (let i = i0; i <= i1; i++) {
+        top.push(toCam(v, 0, -SMP[i].h, SMP[i].z));
+        bot.push(toCam(v, 0, 0, SMP[i].z));
+        nearest = Math.min(nearest, top[top.length - 1][2], bot[bot.length - 1][2]);
+      }
+      if (nearest < 3) continue;
+      const pt = proj(v, 0, -cm.h, cm.z, 0.6);
+      const pb = proj(v, 0, 0, cm.z, 0.6);
+      let style: string | CanvasGradient = withAlpha(S_COL[i0], a * 0.3);
+      if (pt && pb && Math.hypot(pt.x - pb.x, pt.y - pb.y) > 1) {
+        const g = ctx.createLinearGradient(pt.x, pt.y, pb.x, pb.y);
+        g.addColorStop(0, withAlpha(S_COL[i0], a));
+        g.addColorStop(0.3, withAlpha(S_COL[i0], a * 0.4));
+        g.addColorStop(1, withAlpha(S_COL[i0], a * 0.06));
+        style = g;
+      }
+      fillPoly(ctx, v, [...top, ...bot.reverse()], style);
+    }
+  }
+
+  // --- the wall of light: the steep curve extruded sideways into a sheet -----------------------------------
+  const wallA = (0.55 + 0.45 * ease.inOutQuad(prog(f, CLIMB - 40, CLIMB + 20))) * (1 - 0.7 * rk) * (1 + 0.8 * preA);
+  // seen from the flat road, the wall far ahead glows like a beacon
+  {
+    const ba = (1 - climbK(f)) * clamp((sLit - S_SP0) / 60);
+    if (ba > 0.01)
+      for (const [hh, rr, col] of [
+        [8, 9, C.cyan],
+        [30, 18, C.magenta],
+        [80, 30, "#ffd6f2"],
+      ] as const) {
+        const s = sOfU(2005) + (hh / H_HERE) * (S_HERE - sOfU(2005));
+        const c = curveAt(s);
+        const p = proj(v, 0, -c.h, c.z, 1);
+        if (p) glow(ctx, p.x, p.y, rr * p.s * 3, col, 0.22 * ba, 0.02);
+      }
+  }
+  if (lit > S_SP0 && wallA > 0.01) {
+    const SK = 6;
+    const sheetEnd = Math.min(sLit, SMP[I_TOP].s);
+    // translucent sheet
+    for (let i0 = I_WALL; i0 < I_TOP; i0 += SK) {
+      const i1 = Math.min(I_TOP, i0 + SK);
+      const cm = SMP[(i0 + i1) >> 1];
+      if (cm.s > sheetEnd) break;
+      const rise = clamp((cm.u - 2001) / 7);
+      const a = 0.04 * wallA * rise * bA(cm.h) * fog(dist(0, -cm.h, cm.z)) * (1 - 0.55 * ks);
+      if (a < 0.004) continue;
+      const L: V3[] = [];
+      const R: V3[] = [];
+      for (let i = i0; i <= i1; i++) {
+        L.push(toCam(v, -SHEET, -SMP[i].h, SMP[i].z));
+        R.push(toCam(v, SHEET, -SMP[i].h, SMP[i].z));
+      }
+      fillPoly(ctx, v, [...L, ...R.reverse()], withAlpha(S_COL[i0], a));
+    }
+    // strands
+    for (const st of STRANDS) {
+      const fall = Math.exp(-Math.abs(st.x) / 6) * st.a * wallA;
+      for (let i0 = I_WALL; i0 < I_TOP; i0 += SK * 3) {
+        const i1 = Math.min(I_TOP, i0 + SK * 3);
+        const cm = SMP[(i0 + i1) >> 1];
+        if (cm.s > sheetEnd) break;
+        const d = dist(st.x, -cm.h, cm.z);
+        const a = fall * clamp((cm.u - 2001) / 7) * bA(cm.h) * fog(d) * clamp(d / 2);
+        if (a < 0.01) continue;
+        const cs: V3[] = [];
+        for (let i = i0; i <= i1; i += 3) cs.push(toCam(v, st.x, -SMP[i].h, SMP[i].z));
+        cs.push(toCam(v, st.x, -SMP[i1].h, SMP[i1].z));
+        const rs = runs(v, cs);
+        if (!rs.length) continue;
+        const sc = cam.f / Math.max(1, d);
+        pathRuns(ctx, rs);
+        ctx.strokeStyle = withAlpha(S_COL[i0], 0.18 * a);
+        ctx.lineWidth = clamp(0.4 * sc, 2, 34);
+        ctx.stroke();
+        ctx.strokeStyle = withAlpha(S_HOT[i0], 0.75 * a);
+        ctx.lineWidth = clamp(0.045 * sc, 1, 4);
+        ctx.stroke();
+      }
+    }
+    // rungs across the sheet: they rush past during the climb
+    const r0 = Math.ceil(S_SP0 / RUNG_STEP);
+    const r1 = Math.floor(Math.min(sheetEnd, S_HERE + 60) / RUNG_STEP);
+    for (let k = r0; k <= r1; k++) {
+      const s = k * RUNG_STEP;
+      const c = curveAt(s);
+      const d = dist(0, -c.h, c.z);
+      const a = 0.55 * wallA * clamp((c.u - 2002) / 6) * bA(c.h) * fog(d) * clamp(d / 3);
+      if (a < 0.01) continue;
+      const rs = runs(v, [toCam(v, -SHEET, -c.h, c.z), toCam(v, 0, -c.h, c.z), toCam(v, SHEET, -c.h, c.z)]);
+      if (!rs.length || rs[0].length < 2) continue;
+      const pa = rs[0][0];
+      const pb = rs[rs.length - 1][rs[rs.length - 1].length - 1];
+      const g = ctx.createLinearGradient(pa.x, pa.y, pb.x, pb.y);
+      const col = palAt(c.u);
+      g.addColorStop(0, withAlpha(col, 0));
+      g.addColorStop(0.5, withAlpha(mix(col, "#ffffff", 0.3), a));
+      g.addColorStop(1, withAlpha(col, 0));
+      ctx.strokeStyle = g;
+      ctx.lineWidth = clamp((0.07 * cam.f) / Math.max(1, d), 1, 6);
+      pathRuns(ctx, rs);
+      ctx.stroke();
+    }
+  }
+
+  // --- pylons --------------------------------------------------------------------------------------------
+  for (const py of PYLONS) {
+    if (f <= py.rise) continue;
+    const r = ease.outBack(clamp((f - py.rise) / 24));
+    const top = PYL_TOP * r;
+    const d = dist(py.x, -top / 2, py.z);
+    const fa = fog(d) * (1 - 0.85 * rk);
+    if (fa <= 0.01) continue;
+    const pass = f - py.pass;
+    const kick = pass >= 0 ? Math.exp(-pass / 9) : 0;
+    const wv = f >= frameWave(sOfU(py.year)) ? Math.exp(-(f - frameWave(sOfU(py.year))) / 8) : 0;
+    const boost = 1 + 1.4 * kick + 2 * wv;
+    const tpc = toCam(v, py.x, -top, py.z);
+    const tp = tpc[2] > NEAR ? scr(v, tpc) : null;
+    // beam into the sky
+    const sky = runs(v, [tpc, toCam(v, py.x, -top - 34, py.z)]);
+    if (sky.length && tp) {
+      const end = sky[0][sky[0].length - 1];
+      const g = ctx.createLinearGradient(tp.x, tp.y, end.x, end.y);
+      g.addColorStop(0, withAlpha(py.col, 0.3 * fa * Math.min(2, boost)));
+      g.addColorStop(1, withAlpha(py.col, 0));
+      ctx.strokeStyle = g;
+      ctx.lineWidth = clamp(0.22 * tp.s, 1.5, 22);
+      pathRuns(ctx, sky);
+      ctx.stroke();
+    }
+    // shaft
+    const shaft = runs(v, [toCam(v, py.x, 0, py.z), tpc]);
+    if (shaft.length) {
+      const sc = cam.f / Math.max(1, d);
+      ctx.lineCap = "round";
+      pathRuns(ctx, shaft);
+      ctx.strokeStyle = withAlpha(py.col, 0.14 * fa * boost);
+      ctx.lineWidth = clamp(0.55 * sc, 3, 70);
+      ctx.stroke();
+      ctx.strokeStyle = withAlpha(mix(py.col, "#ffffff", 0.55), 0.9 * fa * Math.min(1.5, boost));
+      ctx.lineWidth = clamp(0.07 * sc, 1.4, 8);
+      ctx.stroke();
+      ctx.lineCap = "butt";
+    }
+    // ground ring + shockwave when it rises + pulse when the camera passes
+    const ring = (R: number): V3[] => {
+      const out: V3[] = [];
+      for (let i = 0; i <= 40; i++) out.push(toCam(v, py.x + Math.cos((i / 40) * TAU) * R, 0, py.z + Math.sin((i / 40) * TAU) * R));
+      return out;
+    };
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = withAlpha(py.col, 0.7 * fa);
+    pathRuns(ctx, runs(v, ring(0.9)));
+    ctx.stroke();
+    const rt = f - py.rise;
+    if (rt < 40) {
+      ctx.strokeStyle = withAlpha(py.col, 0.8 * fa * (1 - rt / 40));
+      ctx.lineWidth = 3;
+      pathRuns(ctx, runs(v, ring(0.9 + rt * 0.22)));
+      ctx.stroke();
+    }
+    const base = proj(v, py.x, 0, py.z, 0.6);
+    if (base) {
+      const sq = clamp(Math.abs(cam.y) / d + 0.06);
+      const rp = 2.2 * base.s;
+      ctx.globalAlpha = Math.min(1, 0.4 * fa * boost);
+      ctx.drawImage(soft(py.col), base.x - rp, base.y - rp * sq, rp * 2, rp * 2 * sq);
+      ctx.globalAlpha = 1;
+    }
+    if (tp) {
+      glow(ctx, tp.x, tp.y, clamp(1.1 * tp.s, 8, 140) * (1 + 0.5 * kick + wv), py.col, 0.85 * fa * Math.min(1.6, boost));
+      glow(ctx, tp.x, tp.y, clamp(0.3 * tp.s, 3, 30), "#ffffff", 0.9 * fa);
+      const la = fa * ease.outCubic(prog(f, py.rise + 8, py.rise + 26)) * clamp((tp.s - 22) / 12);
+      if (la > 0.02) {
+        const size = clamp(0.66 * tp.s, 34, 66);
+        labels.push({ x: tp.x, y: tp.y - clamp(0.5 * tp.s, 18, 46), size, year: String(py.year), text: py.label, col: py.col, a: la, align: "center" });
+      }
+    }
+  }
+
+  // --- the ribbon ------------------------------------------------------------------------------------------
+  if (lit > 0) {
+    const pts = tubePts(false, sLit, 1.0);
+    drawTube(hg, pts, tubeAlpha, tubeCol, [0, 1, 2], 1.5);
+    drawTube(ctx, pts, tubeAlpha, tubeCol, [3, 4], 1);
+  }
+  // doublings: a bead every two years
+  for (const b of BEADS) {
+    if (b.s > sLit) break;
+    const p = proj(v, 0, -b.c.h, b.c.z, 0.8);
+    if (!p || p.x < -100 || p.x > w + 100 || p.y < -100 || p.y > h + 100) continue;
+    const d = p.z;
+    const pop = Math.exp(-Math.max(0, f - b.at) / 10);
+    const ii = SMP.findIndex((c) => c.s >= b.s);
+    const a = S_INT[Math.max(0, ii)] * fog(d) * waveBoost(b.s) * (b.u > 2016 ? 0.45 * (1 - ks) : 1);
+    const R = clamp(ribR(b.c.h) * 2.4 * p.s, 3, b.u > 2016 ? 40 : 90);
+    glow(ctx, p.x, p.y, R * (1 + 1.5 * pop), palAt(b.u), 0.55 * a + 0.5 * pop);
+    glow(ctx, p.x, p.y, R * 0.35, "#ffffff", 0.6 * a);
+  }
+  // origin node (1946)
+  {
+    const p = proj(v, 0, -H0, 0, 0.8);
+    const ia = ease.outCubic(prog(f, IGNITE - 4, IGNITE + 6));
+    if (p && ia > 0) {
+      const t = Math.max(0, f - IGNITE);
+      const pop = Math.exp(-t / 10);
+      glow(ctx, p.x, p.y, clamp(1.6 * p.s, 14, 260) * (1 + 3 * pop) + 260 * pop, C.amber, ia * (0.7 + 0.3 * pop));
+      glow(ctx, p.x, p.y, clamp(0.4 * p.s, 5, 70) * (1 + pop) + 40 * pop, "#ffffff", ia);
+      if (pop > 0.02) {
+        const sw = 900 * (0.4 + 0.6 * pop);
+        const g = ctx.createLinearGradient(p.x - sw, 0, p.x + sw, 0);
+        g.addColorStop(0, withAlpha(C.amber, 0));
+        g.addColorStop(0.5, withAlpha("#fff0d8", 0.85 * pop * ia));
+        g.addColorStop(1, withAlpha(C.amber, 0));
+        ctx.fillStyle = g;
+        ctx.fillRect(p.x - sw, p.y - 2 - 5 * pop, sw * 2, 4 + 10 * pop);
+      }
+      if (t < 50) {
+        // ignition shockwave on the ground
+        const rs: V3[] = [];
+        const R = 0.5 + t * 0.6;
+        for (let i = 0; i <= 48; i++) rs.push(toCam(v, Math.cos((i / 48) * TAU) * R, 0, Math.sin((i / 48) * TAU) * R));
+        ctx.strokeStyle = withAlpha(C.amber, 0.9 * Math.exp(-t / 14));
+        ctx.lineWidth = 3;
+        pathRuns(ctx, runs(v, rs));
+        ctx.stroke();
+      }
+    }
+  }
+  // ignition front
+  if (f >= IGNITE && lit < S_END) {
+    const c = curveAt(lit);
+    const p = proj(v, 0, -c.h, c.z, 0.8);
+    if (p) {
+      const fa = fog(p.z);
+      glow(ctx, p.x, p.y, clamp(3 * p.s, 24, 420), palAt(c.u), 0.9 * fa);
+      glow(ctx, p.x, p.y, clamp(0.8 * p.s, 8, 110), "#ffffff", fa);
+    }
+  }
+  // energy pulses racing ahead along the ribbon
+  {
+    const LOOP = S_HERE + 40;
+    for (let k = 0; k < 18; k++) {
+      const s = ((k / 18) * LOOP + f * 2.3) % LOOP;
+      if (s > sLit - 2 || s < 1) continue;
+      const c = curveAt(s);
+      const c0 = curveAt(Math.max(0, s - 5));
+      const rs = runs(v, [toCam(v, 0, -c0.h, c0.z), toCam(v, 0, -c.h, c.z)], 0.8);
+      if (!rs.length) continue;
+      const head = rs[rs.length - 1][rs[rs.length - 1].length - 1];
+      const a = lerp(0.6, 1, clamp((c.u - 1990) / 25)) * fog(head.z) * bA(c.h);
+      ctx.lineCap = "round";
+      ctx.strokeStyle = withAlpha("#ffffff", 0.75 * a);
+      ctx.lineWidth = clamp(ribR(c.h) * 0.6 * head.s, 1.2, 18);
+      pathRuns(ctx, rs);
+      ctx.stroke();
+      ctx.lineCap = "butt";
+      glow(ctx, head.x, head.y, clamp(ribR(c.h) * 2.4 * head.s, 6, 120), palAt(c.u), 0.8 * a);
+    }
+  }
+
+  // --- gates around the wall: 2012, 2022 ----------------------------------------------------------------------
+  for (const gt of GATES) {
+    const c = gt.c;
+    if (c.s > sLit || f <= gt.rise) continue;
+    const app = ease.outBack(clamp((f - gt.rise) / 22));
+    const pass = f - gt.pass;
+    const gone = 1 - clamp((pass - 14) / 16);
+    const keep = Math.max(gone, 0) * (1 - rk);
+    if (app <= 0 || keep <= 0.01) continue;
+    const d = dist(0, -c.h, c.z);
+    const fa = fog(d) * keep;
+    const kick = pass >= 0 ? Math.exp(-pass / 8) : 0;
+    const R = GATE_R * app;
+    const ringPts = (rr: number, n = 64): V3[] => {
+      const out: V3[] = [];
+      for (let i = 0; i <= n; i++) {
+        const a = (i / n) * TAU + f * 0.004;
+        const x = Math.cos(a) * rr;
+        const nn = Math.sin(a) * rr;
+        out.push(toCam(v, x, -c.h - nn * c.tz, c.z - nn * c.th));
+      }
+      return out;
+    };
+    const sc = cam.f / Math.max(1, d);
+    const rs = runs(v, ringPts(R));
+    pathRuns(ctx, rs);
+    ctx.strokeStyle = withAlpha(gt.col, 0.16 * fa * (1 + kick));
+    ctx.lineWidth = clamp(0.9 * sc, 3, 120);
+    ctx.stroke();
+    ctx.strokeStyle = withAlpha(gt.col, 0.42 * fa * (1 + kick));
+    ctx.lineWidth = clamp(0.25 * sc, 2, 40);
+    ctx.stroke();
+    ctx.strokeStyle = withAlpha(mix(gt.col, "#ffffff", 0.55), Math.min(1, fa * (1 + kick)));
+    ctx.lineWidth = clamp(0.06 * sc, 1.2, 10);
+    ctx.stroke();
+    // tick marks around the rim
+    ctx.strokeStyle = withAlpha(mix(gt.col, "#ffffff", 0.3), 0.7 * fa);
+    ctx.lineWidth = clamp(0.04 * sc, 1, 6);
+    for (let i = 0; i < 36; i++) {
+      const a = (i / 36) * TAU - f * 0.006;
+      const l = i % 3 === 0 ? 1.1 : 0.5;
+      const p0 = toCam(v, Math.cos(a) * (R + 0.35), -c.h - Math.sin(a) * (R + 0.35) * c.tz, c.z - Math.sin(a) * (R + 0.35) * c.th);
+      const p1 = toCam(v, Math.cos(a) * (R + 0.35 + l), -c.h - Math.sin(a) * (R + 0.35 + l) * c.tz, c.z - Math.sin(a) * (R + 0.35 + l) * c.th);
+      const tr = runs(v, [p0, p1]);
+      if (!tr.length) continue;
+      pathRuns(ctx, tr);
+      ctx.stroke();
+    }
+    if (pass >= 0 && pass < 30) {
+      // the gate flares and its echo expands past the lens
+      pathRuns(ctx, runs(v, ringPts(R + pass * 0.5)));
+      ctx.strokeStyle = withAlpha("#ffffff", 0.7 * Math.exp(-pass / 7));
+      ctx.lineWidth = clamp(0.15 * sc, 2, 30);
+      ctx.stroke();
+    }
+    const lp = proj(v, R + 1.2, -c.h, c.z);
+    if (lp && pass < 0) {
+      const la = fa * clamp(app) * ease.outCubic(prog(f, gt.rise + 10, gt.rise + 28)) * clamp(-pass / 6) * clamp((lp.s - 16) / 10);
+      if (la > 0.02) labels.push({ x: lp.x + 10, y: lp.y + 22, size: clamp(0.6 * lp.s, 36, 72), year: String(gt.year), text: gt.label, col: gt.col, a: la, align: "left" });
+    }
+  }
+
+  // --- dust: motes over the flat road, sparks streaming past the wall -----------------------------------------
+  const streak = (x: number, y: number, z: number, col: string, al: number, lwK: number) => {
+    const a1 = toCam(v, x, y, z);
+    if (a1[2] <= 0.4) return;
+    const q1 = scr(v, a1);
+    if (q1.x < -200 || q1.x > w + 200 || q1.y < -200 || q1.y > h + 200) return;
+    const d = a1[2];
+    const lw = clamp((lwK * cam.f) / d, 0.8, 4);
+    const a0 = toCam(prev, x, y, z);
+    if (a0[2] > 0.4) {
+      const q0 = scr(prev, a0);
+      const len = Math.hypot(q1.x - q0.x, q1.y - q0.y);
+      if (len > 3 && len < 900) {
+        ctx.strokeStyle = withAlpha(col, al * clamp(30 / len + 0.35));
+        ctx.lineWidth = lw;
+        ctx.beginPath();
+        ctx.moveTo(q0.x, q0.y);
+        ctx.lineTo(q1.x, q1.y);
+        ctx.stroke();
+        return;
+      }
+    }
+    ctx.fillStyle = withAlpha(col, al);
+    ctx.fillRect(q1.x - lw / 2, q1.y - lw / 2, lw, lw);
+  };
+  if (cam.y > -40 && rk < 0.5) {
+    const ma = (1 - kc) * ease.outCubic(prog(f, 20, 70));
+    for (const p of MOTES) {
+      const d = dist(p.x, p.y, p.z);
+      const tw = 0.55 + 0.45 * Math.sin(f * 0.07 + p.tw);
+      const al = (0.25 + 0.6 * p.r) * tw * fog(d) * ma * clamp(d / 2);
+      if (al < 0.02) continue;
+      streak(p.x, p.y, p.z, p.r > 0.7 ? "#ffe9c4" : C.gold, al, 0.035);
+    }
+  }
+  if (lit > S_SP0) {
+    const sa = (0.3 + 0.7 * ease.inOutQuad(prog(f, CLIMB - 30, CLIMB + 10))) * (1 - 0.75 * rk) * (1 + 0.6 * rush);
+    for (const p of SPARKS) {
+      const d = dist(p.x, p.y, p.z);
+      const tw = 0.55 + 0.45 * Math.sin(f * 0.09 + p.tw);
+      const al = (0.2 + 0.65 * p.r) * tw * fog(d) * sa * bA(-p.y) * clamp(d / 1.5) * clamp((95 - d) / 45);
+      if (al < 0.02) continue;
+      streak(p.x, p.y, p.z, mix(palAt(p.u), "#ffffff", 0.35), al, 0.04);
+    }
+  }
+
+  // --- hyperspace: speed lines bursting out of the vanishing point while we race up the wall --------------
+  if (rush > 0.02) {
+    const col = palAt(yearAt(f));
+    ctx.lineCap = "round";
+    for (let i = 0; i < 110; i++) {
+      const ang = hash(i * 3.1 + 200) * TAU;
+      const sp = 0.6 + hash(i * 5.7 + 201) * 0.9;
+      const ph = (hash(i * 7.3 + 202) + f * 0.03 * sp) % 1;
+      const r0 = 70 + ph * ph * 1300;
+      const len = (30 + 520 * ph * ph) * (0.4 + 0.6 * rush);
+      const a = rush * 0.42 * Math.sin(ph * Math.PI) * (0.4 + 0.6 * hash(i * 9.1 + 203));
+      if (a < 0.01) continue;
+      const dx = Math.cos(ang);
+      const dy = Math.sin(ang);
+      ctx.strokeStyle = withAlpha(mix(col, "#ffffff", 0.5), a);
+      ctx.lineWidth = 1 + 2.4 * ph;
+      ctx.beginPath();
+      ctx.moveTo(cam.cx + dx * r0, cam.cy + dy * r0);
+      ctx.lineTo(cam.cx + dx * (r0 + len), cam.cy + dy * (r0 + len));
+      ctx.stroke();
+    }
+    ctx.lineCap = "butt";
+    glow(ctx, cam.cx, cam.cy, 700, mix(col, "#ffffff", 0.4), 0.22 * rush, 0.03);
+  }
+
+  // --- the doubling wave ----------------------------------------------------------------------------------
+  if (wS > -5) {
+    for (let k = 0; k < 14; k++) {
+      const s = wS - k * 3;
+      if (s < 0 || s > S_END) continue;
+      const c = curveAt(s);
+      const p = proj(v, 0, -c.h, c.z, 0.8);
+      if (!p) continue;
+      const fall = Math.exp(-k / 4);
+      glow(ctx, p.x, p.y, clamp(5 * p.s, 40, 380) * (0.5 + 0.5 * fall), k < 2 ? "#ffffff" : palAt(c.u), 0.85 * fall * bA(c.h) + 0.15 * fall);
+    }
+  }
+
+  // --- reveal: the whole history on the curve ------------------------------------------------------------------
+  if (rk > 0.02) {
+    const la = ease.outCubic(prog(rk, 0.7, 0.97));
+    MILESTONES.forEach((ms, k) => {
+      const s = sOfU(ms.year);
+      const c = curveAt(s);
+      const p = proj(v, 0, -c.h, c.z, 0.8);
+      if (!p) return;
+      const fw = frameWave(s);
+      const wv = f >= fw ? Math.exp(-(f - fw) / 10) : 0;
+      glow(ctx, p.x, p.y, 20 + 46 * wv, ms.col, 0.95 * rk);
+      glow(ctx, p.x, p.y, 6 + 10 * wv, "#ffffff", rk);
+      if (la <= 0.01) return;
+      const L = REV_LBL[k];
+      const ex = p.x + L.dx;
+      const ey = p.y + L.dy;
+      ctx.strokeStyle = withAlpha(ms.col, 0.8 * la);
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      if (L.align === "center") {
+        ctx.moveTo(p.x, p.y - 12);
+        ctx.lineTo(p.x, ey + 8);
+      } else {
+        ctx.moveTo(p.x + Math.sign(L.dx) * 12, p.y);
+        ctx.lineTo(ex, ey - 12);
+      }
+      ctx.stroke();
+      labels.push({ x: ex, y: ey, size: 32, year: String(ms.year), text: ms.label, col: ms.col, a: la, align: L.align, fixed: true });
+    });
+  }
+
+  // --- you are here -----------------------------------------------------------------------------------------
+  if (f > HERE - 16 && f < FLASH) {
+    const p = proj(v, MARK[0], MARK[1], MARK[2], 0.8);
+    if (p) {
+      const a = ease.outCubic(prog(f, HERE - 14, HERE + 6));
+      const pulse = 0.8 + 0.2 * Math.sin((f - HERE) * 0.2);
+      const hit = f >= WAVE_HIT ? f - WAVE_HIT : -1;
+      const R = clamp(2.2 * p.s, 46, 150);
+      glow(ctx, p.x, p.y, R * 2.4 * pulse * (1 + (hit >= 0 ? hit * 0.5 : 0)), C.gold, 0.5 * a, 0.1);
+      glow(ctx, p.x, p.y, R * 0.75 * pulse, C.gold, 0.85 * a);
+      glow(ctx, p.x, p.y, R * 0.2, "#ffffff", a);
+      for (let k = 0; k < 3; k++) {
+        const tt = f - HERE + k * 18;
+        if (tt < 0) continue;
+        const t = (tt % 54) / 54;
+        ctx.strokeStyle = withAlpha(C.gold, 0.95 * (1 - t) * a);
+        ctx.lineWidth = 5 * (1 - t) + 1.5;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, R * 0.4 + t * R * 1.8, 0, TAU);
+        ctx.stroke();
+      }
+      // target brackets
+      const br = R * 0.85 * (1 + 0.6 * (1 - ease.outExpo(prog(f, HERE - 10, HERE + 14))));
+      ctx.strokeStyle = withAlpha(C.gold, 0.9 * a);
+      ctx.lineWidth = 2.5;
+      for (let k = 0; k < 4; k++) {
+        const ang = (k / 4) * TAU + Math.PI / 4 + (f - HERE) * 0.01;
+        const cx = p.x + Math.cos(ang) * br;
+        const cy = p.y + Math.sin(ang) * br;
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(ang + Math.PI * 0.75) * 16, cy + Math.sin(ang + Math.PI * 0.75) * 16);
+        ctx.lineTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(ang - Math.PI * 0.75) * 16, cy + Math.sin(ang - Math.PI * 0.75) * 16);
+        ctx.stroke();
+      }
+    }
+  }
+  // pre-flash: light pours out of the top of the curve
+  if (preA > 0) {
+    const p = proj(v, MARK[0], MARK[1], MARK[2], 0.8);
+    const x = p ? p.x : w / 2;
+    const y = p ? p.y : 0;
+    glow(ctx, x, y, 260 + 2600 * ease.inQuad(preA), "#ffffff", 0.95 * preA, 0.18);
+    glow(ctx, x, y, 200 + 1500 * preA, C.gold, 0.6 * preA, 0.05);
+  }
+  ctx.restore();
+  {
+    const b = hb.b.getContext("2d")!;
+    b.globalCompositeOperation = "source-over";
+    b.clearRect(0, 0, HB_W, HB_H);
+    b.filter = "blur(5px)";
+    b.drawImage(hb.a, 0, 0);
+    b.filter = "none";
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = "lighter";
+    ctx.drawImage(hb.b, 0, 0, w, h);
+    ctx.restore();
+  }
+
+  bloom(ctx, w, h, lerp(0.6, 0.95, grade) * (1 - 0.25 * rk) * (1 - 0.3 * ks) + 0.25 * rush + 0.8 * preA);
+
+  // --- labels (after bloom, crisp) -------------------------------------------------------------------------
+  ctx.save();
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate(pose.roll);
+  ctx.translate(-w / 2, -h / 2);
+  ctx.globalCompositeOperation = "source-over";
+  labels.sort((a, b) => b.size - a.size);
+  const placed: [number, number, number, number][] = [];
+  for (const L of labels) {
+    const wEst = L.size * Math.max(2.5, L.text.length * 0.8);
+    const bx0 = L.align === "center" ? L.x - wEst / 2 : L.align === "right" ? L.x - wEst : L.x;
+    const box: [number, number, number, number] = [bx0 - 10, L.y - L.size * 1.95 - 6, bx0 + wEst + 10, L.y + 10];
+    if (!L.fixed) {
+      if (placed.some((q) => q[0] < box[2] && box[0] < q[2] && q[1] < box[3] && box[1] < q[3])) continue;
+      placed.push(box);
+    }
+    const xl = L.align === "center" ? L.x - wEst / 2 : L.align === "right" ? L.x - wEst : L.x;
+    const safe = clamp((xl - 64) / 60) * clamp((w - 64 - (xl + wEst)) / 60) * clamp((L.y - L.size * 1.9 - 64) / 50) * clamp((780 - L.y) / 40);
+    const a = L.a * safe * (1 - clamp(preA * 1.6));
+    if (a <= 0.01) continue;
+    ctx.globalAlpha = a;
+    ctx.textAlign = L.align;
+    ctx.textBaseline = "alphabetic";
+    ctx.shadowColor = "rgba(0,0,0,0.95)";
+    ctx.shadowBlur = 14;
+    ctx.font = `800 ${Math.round(L.size)}px ${FONT_MONO}`;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(L.year, L.x, L.y - L.size * 0.92);
+    ctx.font = `700 ${Math.round(L.size * 0.78)}px ${FONT_CN}`;
+    const [lr, lg, lb] = rgbOf(L.col);
+    ctx.fillStyle = mix(L.col, "#ffffff", 0.2126 * lr + 0.7152 * lg + 0.0722 * lb < 150 ? 0.5 : 0.25); // dark hues lifted for legibility
+    ctx.fillText(L.text, L.x, L.y);
+    ctx.shadowBlur = 0;
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+
+  // keep the caption band calm
+  const ca = capA(f);
+  if (ca > 0) {
+    const g = ctx.createLinearGradient(0, 740, 0, h);
+    g.addColorStop(0, "rgba(0,0,0,0)");
+    g.addColorStop(0.45, `rgba(0,0,0,${0.84 * ca})`);
+    g.addColorStop(1, `rgba(0,0,0,${0.96 * ca})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 740, w, h - 740);
+  }
+};
+
+const HB_W = 480;
+const HB_H = 270;
+let haloA: HTMLCanvasElement | null = null;
+let haloB: HTMLCanvasElement | null = null;
+const haloBuffers = () => {
+  if (!haloA || !haloB) {
+    haloA = document.createElement("canvas");
+    haloA.width = HB_W;
+    haloA.height = HB_H;
+    haloB = document.createElement("canvas");
+    haloB.width = HB_W;
+    haloB.height = HB_H;
+  }
+  return { a: haloA, b: haloB };
+};
+
+let bloomA: HTMLCanvasElement | null = null;
+let bloomB: HTMLCanvasElement | null = null;
+/** Two-level bloom: blur quarter- and eighth-size copies, square them (soft threshold), add them back. */
+const bloom = (ctx: CanvasRenderingContext2D, w: number, h: number, k: number) => {
+  if (k <= 0.01) return;
+  if (!bloomA || !bloomB) {
+    bloomA = document.createElement("canvas");
+    bloomA.width = 480;
+    bloomA.height = 270;
+    bloomB = document.createElement("canvas");
+    bloomB.width = 240;
+    bloomB.height = 135;
+  }
+  const a = bloomA.getContext("2d")!;
+  a.globalCompositeOperation = "source-over";
+  a.globalAlpha = 1;
+  a.clearRect(0, 0, 480, 270);
+  a.filter = "blur(4px)";
+  a.drawImage(ctx.canvas, 0, 0, 480, 270);
+  a.filter = "none";
+  a.globalCompositeOperation = "multiply";
+  a.drawImage(bloomA, 0, 0);
+  const b = bloomB.getContext("2d")!;
+  b.globalCompositeOperation = "source-over";
+  b.clearRect(0, 0, 240, 135);
+  b.filter = "blur(7px)";
+  b.drawImage(bloomA, 0, 0, 240, 135);
+  b.filter = "none";
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = Math.min(1, k);
+  ctx.drawImage(bloomA, 0, 0, w, h);
+  ctx.globalAlpha = Math.min(1, k * 0.9);
+  ctx.drawImage(bloomB, 0, 0, w, h);
+  ctx.restore();
 };
 
 const World: React.FC = () => <Canvas draw={drawWorld} />;
 
+// =============================================================================================
 /** "我们在这里 · YOU ARE HERE" tag pinned to the marker. */
 const HereTag: React.FC = () => {
   const frame = useCurrentFrame();
-  if (frame < HERE - 10 || frame >= FLASH) return null;
+  if (frame < HERE - 6 || frame >= FLASH) return null;
   const pose = poseAt(frame);
   const v = mkView(camOf(pose));
-  const p = proj(v, MARK[0], MARK[1], MARK[2]);
+  const p = proj(v, MARK[0], MARK[1], MARK[2], 0.8);
   if (!p) return null;
-  const a = ease.outCubic(prog(frame, HERE - 6, HERE + 14)) * (1 - prog(frame, WAVE_HIT - 2, WAVE_HIT + 4));
-  const line = ease.outExpo(prog(frame, HERE - 6, HERE + 16));
-  // same roll as the canvas
+  const edge = clamp((p.y - 120) / 50) * clamp((1300 - p.x) / 80);
+  const a = ease.outCubic(prog(frame, HERE - 2, HERE + 14)) * (1 - prog(frame, WAVE_HIT - 12, WAVE_HIT - 3)) * edge;
+  if (a <= 0) return null;
+  const line = ease.outExpo(prog(frame, HERE, HERE + 18));
   const c = Math.cos(pose.roll);
   const s = Math.sin(pose.roll);
   const rx = 960 + (p.x - 960) * c - (p.y - 540) * s;
   const ry = 540 + (p.x - 960) * s + (p.y - 540) * c;
-  const dx = 130;
-  const dy = lerp(-96, 70, clamp((330 - ry) / 140));
-  const tIn = ease.outCubic(prog(frame, HERE + 2, HERE + 18));
+  const R = clamp(2.2 * p.s, 46, 150) * 0.55;
+  const dx = R + 70;
+  const dy = ry < 230 ? 34 : -34;
+  const tIn = ease.outCubic(prog(frame, HERE + 6, HERE + 22));
+  const lx = rx + R * 0.7;
   return (
     <AbsoluteFill style={{ opacity: a }}>
       <svg width={1920} height={1080} style={{ position: "absolute", inset: 0 }}>
         <polyline
-          points={`${rx + 18 * Math.sign(dx)},${ry + 14 * Math.sign(dy)} ${rx + dx * line},${ry + dy * line} ${rx + dx + 250 * line},${ry + dy}`}
+          points={`${lx},${ry + (dy > 0 ? 6 : -6)} ${lx + (dx - R * 0.7) * line},${ry + dy * line} ${rx + dx + 470 * line},${ry + dy}`}
           stroke={C.gold}
-          strokeWidth={2}
+          strokeWidth={2.5}
           fill="none"
+          style={{ filter: `drop-shadow(0 0 6px ${C.gold})` }}
         />
       </svg>
       <div
         style={{
           position: "absolute",
-          left: rx + dx + 6,
-          top: ry + dy - 64,
+          left: rx + dx + 8,
+          top: dy > 0 ? ry + dy + 10 : ry + dy - 70,
           whiteSpace: "nowrap",
           opacity: tIn,
-          transform: `translateY(${(1 - tIn) * 12}px)`,
+          transform: `translateX(${(1 - tIn) * -18}px)`,
+          display: "flex",
+          alignItems: "baseline",
+          gap: 16,
         }}
       >
-        <span style={{ fontFamily: FONT_CN, fontWeight: 900, fontSize: 48, color: "#fff", textShadow: `0 0 22px ${C.gold}, 0 2px 8px #000` }}>我们在这里</span>
-        <span style={{ fontFamily: FONT_MONO, fontWeight: 800, fontSize: 24, color: C.gold, letterSpacing: "0.18em", marginLeft: 14, textShadow: "0 2px 8px #000" }}>
-          · YOU ARE HERE
-        </span>
+        <span style={{ fontFamily: FONT_CN, fontWeight: 900, fontSize: 50, color: "#fff", textShadow: `0 0 24px ${C.gold}, 0 2px 10px #000, 0 0 30px #000` }}>我们在这里</span>
+        <span style={{ fontFamily: FONT_MONO, fontWeight: 800, fontSize: 24, color: C.gold, letterSpacing: "0.2em", textShadow: "0 2px 8px #000, 0 0 18px #000" }}>· YOU ARE HERE</span>
       </div>
     </AbsoluteFill>
   );
 };
 
 /** Year readout while flying (interpolates between the milestone years). */
-const yearAt = (f: number) => {
-  const c = curveAt(anchorAt(Math.min(f, STOP)));
-  return c.u - 3 * c.tz;
-};
-const Y2022 = firstFrame(yearAt, 2022);
 const YearHud: React.FC = () => {
   const frame = useCurrentFrame();
   const year = Math.floor(clamp(yearAt(frame), 1946, 2022));
-  const a = ease.outCubic(prog(frame, PYLONS[0].pass - 10, PYLONS[0].pass + 10)) * (1 - prog(frame, Math.min(Y2022, HERE - 30) + 4, Math.min(Y2022, HERE - 30) + 20));
+  const a = ease.outCubic(prog(frame, PASS[1946] - 22, PASS[1946] - 4)) * (1 - prog(frame, PASS[2022] + 4, PASS[2022] + 20));
   if (a <= 0) return null;
+  const v = camSpeed(frame);
   return (
-    <div style={{ position: "absolute", right: 96, top: 70, textAlign: "right", opacity: a, fontFamily: FONT_MONO }}>
-      <div style={{ fontSize: 20, letterSpacing: "0.4em", color: withAlpha(C.gold, 0.85), textShadow: "0 0 10px #000" }}>YEAR</div>
-      <div style={{ fontSize: 60, fontWeight: 800, color: "#fff", textShadow: `0 0 20px ${palAt(year)}, 0 2px 8px #000` }}>{year}</div>
+    <div style={{ position: "absolute", right: 104, top: 76, textAlign: "right", opacity: a, fontFamily: FONT_MONO }}>
+      <div style={{ fontSize: 20, letterSpacing: "0.42em", color: withAlpha(C.gold, 0.85), textShadow: "0 0 10px #000" }}>YEAR</div>
+      <div
+        style={{
+          fontSize: 64,
+          fontWeight: 800,
+          color: "#fff",
+          lineHeight: 1.05,
+          textShadow: `0 0 ${16 + 20 * clamp(v - 0.6)}px ${palAt(year)}, 0 2px 8px #000`,
+        }}
+      >
+        {year}
+      </div>
+      <div style={{ marginTop: 8, marginLeft: "auto", height: 3, width: 180, background: "rgba(255,255,255,0.12)" }}>
+        <div style={{ height: "100%", width: `${((year - 1946) / (2022 - 1946)) * 100}%`, marginLeft: "auto", background: `linear-gradient(90deg, ${C.amber}, ${palAt(year)})`, boxShadow: `0 0 10px ${palAt(year)}` }} />
+      </div>
     </div>
   );
 };
 
-// ---------------------------------------------------------------------------------------------
+// =============================================================================================
 // Final title.
-const EMBERS = Array.from({ length: 420 }, (_, i) => ({
+const EMBERS = Array.from({ length: 460 }, (_, i) => ({
   x: hash(i * 2.13 + 70),
   y: hash(i * 4.71 + 71),
-  sp: 0.4 + hash(i * 6.2 + 72) * 1.4,
-  r: 1 + Math.pow(hash(i * 8.3 + 73), 3) * 5,
+  sp: 0.25 + hash(i * 6.2 + 72) * 0.9,
+  r: 1 + Math.pow(hash(i * 8.3 + 73), 3) * 4.5,
   c: [C.gold, C.cyan, C.magenta, C.amber, "#ffffff"][i % 5],
   tw: hash(i * 9.9 + 74) * 30,
   drift: hash(i * 1.37 + 75) - 0.5,
 }));
-/** Faint exponential behind the title: drawn left to right, its head shoots off the top. */
-const expPt = (t: number, w: number, h: number): [number, number] => {
-  const x = lerp(-40, w * 0.97, t);
-  const y = h * 0.86 - ((Math.exp(t * 7) - 1) / (Math.exp(7) - 1)) * (h * 0.98);
-  return [x, y];
-};
+const SPARKS2 = Array.from({ length: 700 }, (_, i) => ({
+  a: hash(i * 2.9 + 80) * TAU,
+  v: 8 + hash(i * 4.1 + 81) * 44,
+  drag: 0.035 + hash(i * 6.7 + 82) * 0.03,
+  life: 26 + hash(i * 8.8 + 83) * 70,
+  c: [C.gold, C.cyan, C.magenta, "#ffffff"][i % 4],
+  r: hash(i * 1.1 + 84),
+}));
+/** Faint exponential behind the title: low along the bottom, shooting up at the far right. */
+const expPt = (t: number, w: number, h: number): [number, number] => [lerp(-30, w * 0.95, t), h * 0.9 - ((Math.exp(t * 9) - 1) / (Math.exp(9) - 1)) * (h * 1.05)];
+const FCX = 960;
+const FCY = 440;
 
 const FinalField: React.FC = () => (
   <Canvas
     draw={(ctx, w, h, f) => {
       const t = f - FLASH;
       if (t < 0) return;
-      ctx.fillStyle = "#020208";
+      const bg = ctx.createRadialGradient(FCX, FCY, 0, FCX, FCY, w * 0.8);
+      bg.addColorStop(0, "#0d0714");
+      bg.addColorStop(1, "#010103");
+      ctx.fillStyle = bg;
       ctx.fillRect(0, 0, w, h);
       ctx.globalCompositeOperation = "lighter";
-      const settle = Math.exp(-t / 40);
-      glow(ctx, w / 2, h / 2 - 90, 900 + 500 * settle, C.amber, 0.12 + 0.4 * settle, 0.02);
-      glow(ctx, w / 2, h / 2 - 90, 500, C.magenta, 0.08 + 0.3 * settle, 0.02);
-      // rays
+      const settle = Math.exp(-t / 36);
+      glow(ctx, FCX, FCY, 1000 + 600 * settle, C.amber, 0.1 + 0.4 * settle, 0.02);
+      glow(ctx, FCX, FCY, 620, C.magenta, 0.07 + 0.25 * settle, 0.02);
+      // god rays out of the flash
       ctx.save();
-      ctx.translate(w / 2, h / 2 - 90);
-      ctx.rotate(t * 0.0015);
-      const rayA = 0.1 * Math.exp(-t / 60) + 0.035;
-      for (let i = 0; i < 40; i++) {
-        const a = (i / 40) * TAU + hash(i * 3.3) * 0.12;
-        const wd = 0.01 + hash(i * 7.1) * 0.025;
-        const g = ctx.createLinearGradient(0, 0, Math.cos(a) * 1300, Math.sin(a) * 1300);
-        const col = mix(C.amber, C.magenta, hash(i * 2.9));
+      ctx.translate(FCX, FCY);
+      ctx.rotate(t * 0.0016);
+      const rayA = 0.16 * Math.exp(-t / 34) + 0.028;
+      for (let i = 0; i < 44; i++) {
+        const a = (i / 44) * TAU + hash(i * 3.3) * 0.12;
+        const wd = 0.008 + hash(i * 7.1) * 0.024;
+        const g = ctx.createLinearGradient(0, 0, Math.cos(a) * 1400, Math.sin(a) * 1400);
+        const col = mix(C.gold, C.magenta, hash(i * 2.9));
         g.addColorStop(0, withAlpha(col, rayA));
         g.addColorStop(1, withAlpha(col, 0));
         ctx.fillStyle = g;
         ctx.beginPath();
         ctx.moveTo(0, 0);
-        ctx.arc(0, 0, 1300, a - wd, a + wd);
+        ctx.arc(0, 0, 1400, a - wd, a + wd);
         ctx.closePath();
         ctx.fill();
       }
       ctx.restore();
       // shockwaves
       for (let k = 0; k < 4; k++) {
-        const tt = t - 4 - k * 5;
+        const tt = t - 2 - k * 3;
         if (tt < 0) continue;
-        const r = 40 + tt * (34 - k * 4) * Math.exp(-tt / 80);
-        const a = Math.exp(-tt / (16 + k * 6));
-        ctx.strokeStyle = withAlpha([C.gold, C.cyan, C.magenta, "#ffffff"][k], 0.8 * a);
-        ctx.lineWidth = 2 + 12 * a;
+        const r = 80 + tt * (96 - k * 12) * Math.exp(-tt / 70);
+        const a = Math.exp(-tt / (7 + k * 2.5));
+        if (a < 0.01) continue;
+        ctx.strokeStyle = withAlpha([C.gold, C.cyan, C.magenta, "#ffffff"][k], 0.85 * a);
+        ctx.lineWidth = 2 + 14 * a;
         ctx.beginPath();
-        ctx.ellipse(w / 2, h / 2 - 90, r, r * 0.58, 0, 0, TAU);
+        ctx.ellipse(FCX, FCY, r, r * 0.56, 0, 0, TAU);
         ctx.stroke();
       }
+      // spark burst
+      if (t < 100) {
+        for (const p of SPARKS2) {
+          const life = Math.exp(-t / p.life);
+          if (life < 0.03) continue;
+          const d = (p.v / p.drag) * (1 - Math.exp(-p.drag * t));
+          const x = FCX + Math.cos(p.a) * d * 1.35;
+          const y = FCY + Math.sin(p.a) * d * 0.8 + t * t * 0.003 * p.r;
+          glow(ctx, x, y, 2 + 6 * p.r * life + 1.5, p.c, life);
+        }
+      }
       // the curve, echoed
-      const draw = ease.inOutCubic(prog(f, FLASH + 14, FLASH + 96));
+      const draw = ease.inOutCubic(prog(f, FLASH + 26, FLASH + 104));
       if (draw > 0) {
-        const n = 120;
+        const n = 140;
         ctx.lineCap = "round";
         for (const [lw, al] of [
-          [14, 0.05],
-          [5, 0.12],
-          [1.8, 0.4],
+          [12, 0.04],
+          [4.5, 0.1],
+          [1.6, 0.36],
         ] as const) {
           ctx.lineWidth = lw;
           for (let i = 0; i < n * draw; i++) {
             const [x0, y0] = expPt(i / n, w, h);
             const [x1, y1] = expPt(Math.min(draw, (i + 1) / n), w, h);
-            ctx.strokeStyle = withAlpha(palAt(lerp(1990, 2025, i / n)), al);
+            ctx.strokeStyle = withAlpha(palAt(lerp(1990, 2026, i / n)), al);
             ctx.beginPath();
             ctx.moveTo(x0, y0);
             ctx.lineTo(x1, y1);
@@ -1173,28 +1324,30 @@ const FinalField: React.FC = () => (
           }
         }
         const [hx, hy] = expPt(draw, w, h);
-        if (hy > -40) {
-          glow(ctx, hx, hy, 60, C.gold, 0.6);
-          glow(ctx, hx, hy, 14, "#ffffff", 0.9);
+        if (hy > -40 && draw < 1) {
+          glow(ctx, hx, hy, 70, C.gold, 0.55);
+          glow(ctx, hx, hy, 16, "#ffffff", 0.9);
         }
       }
+      // drifting particle field
       for (const e of EMBERS) {
-        const y = ((((e.y * (h + 100) - t * e.sp * 0.9) % (h + 100)) + h + 100) % (h + 100)) - 50;
-        const x = e.x * w + Math.sin(t * 0.01 + e.tw) * 30 * e.drift;
-        const burst = Math.exp(-t / 18);
-        const bx = w / 2 + (x - w / 2) * (1 - 0.4 * burst);
-        const by = h / 2 + (y - h / 2) * (1 - 0.4 * burst);
-        const a = (0.25 + 0.4 * Math.sin(t * 0.07 + e.tw) ** 2) * clamp(t / 12);
-        glow(ctx, bx, by, e.r * 2.2, e.c, a);
+        const span = h + 100;
+        const y = ((((e.y * span - t * e.sp) % span) + span) % span) - 50;
+        const x = e.x * w + Math.sin(t * 0.012 + e.tw) * 26 * e.drift;
+        const burst = Math.exp(-t / 16);
+        const bx = FCX + (x - FCX) * (1 - 0.45 * burst);
+        const by = FCY + (y - FCY) * (1 - 0.45 * burst);
+        const a = (0.22 + 0.4 * Math.sin(t * 0.06 + e.tw) ** 2) * clamp((t - 4) / 14);
+        glow(ctx, bx, by, e.r * 2.3, e.c, a);
       }
       // anamorphic streak left by the flash
-      const sa = Math.exp(-t / 22);
+      const sa = Math.exp(-t / 20);
       const g = ctx.createLinearGradient(0, 0, w, 0);
       g.addColorStop(0, withAlpha(C.cyan, 0));
-      g.addColorStop(0.5, withAlpha("#ffffff", 0.7 * sa));
+      g.addColorStop(0.5, withAlpha("#ffffff", 0.75 * sa));
       g.addColorStop(1, withAlpha(C.cyan, 0));
       ctx.fillStyle = g;
-      ctx.fillRect(0, h / 2 - 90 - 2 - 8 * sa, w, 4 + 16 * sa);
+      ctx.fillRect(0, FCY - 2 - 9 * sa, w, 4 + 18 * sa);
       ctx.globalCompositeOperation = "source-over";
     }}
   />
@@ -1204,12 +1357,13 @@ const FinalTitle: React.FC = () => {
   const frame = useCurrentFrame();
   const t = frame - FLASH;
   if (t < 0) return null;
-  const e = ease.outExpo(clamp(t / 30));
-  const sc = 1.25 - 0.25 * e + 0.04 * prog(frame, FLASH, END);
-  const ab = 30 * Math.exp(-t / 10);
-  const sub = ease.outCubic(prog(frame, FLASH + 40, FLASH + 72));
-  const lineT = ease.inOutCubic(prog(frame, FLASH + 26, FLASH + 70));
-  const sweep = prog(frame, FLASH + 80, FLASH + 120);
+  const e = ease.outExpo(clamp(t / 34));
+  const sc = 1.32 - 0.32 * e + 0.035 * prog(frame, FLASH, END);
+  const ab = 30 * Math.exp(-t / 11);
+  const blur = 10 * (1 - ease.outCubic(clamp(t / 22)));
+  const sub = ease.outCubic(prog(frame, FLASH + 44, FLASH + 76));
+  const lineT = ease.inOutCubic(prog(frame, FLASH + 30, FLASH + 74));
+  const sweep = prog(frame, FLASH + 82, FLASH + 122);
   const base: React.CSSProperties = {
     position: "absolute",
     inset: 0,
@@ -1228,10 +1382,10 @@ const FinalTitle: React.FC = () => {
   );
   return (
     <AbsoluteFill>
-      <div style={{ position: "absolute", inset: 0, transform: `translateY(-100px) scale(${sc})` }}>
-        <div style={{ ...base, color: C.red, transform: `translateX(${-ab}px)`, mixBlendMode: "screen", opacity: 0.8 }}>{words}</div>
-        <div style={{ ...base, color: C.cyan, transform: `translateX(${ab}px)`, mixBlendMode: "screen", opacity: 0.8 }}>{words}</div>
-        <div style={{ ...base, color: "#fff", textShadow: `0 0 30px ${C.amber}, 0 0 80px rgba(255,120,40,0.6)` }}>
+      <div style={{ position: "absolute", inset: 0, transform: `translateY(${FCY - 540}px) scale(${sc})`, filter: blur > 0.2 ? `blur(${blur}px)` : undefined }}>
+        <div style={{ ...base, color: C.red, transform: `translateX(${-ab}px)`, mixBlendMode: "screen", opacity: 0.8 * clamp(ab / 5) }}>{words}</div>
+        <div style={{ ...base, color: C.cyan, transform: `translateX(${ab}px)`, mixBlendMode: "screen", opacity: 0.8 * clamp(ab / 5) }}>{words}</div>
+        <div style={{ ...base, color: "#fff", textShadow: `0 0 30px ${C.amber}, 0 0 80px rgba(255,120,40,0.55), 0 4px 18px rgba(0,0,0,0.6)` }}>
           从真空管到
           <span
             style={{
@@ -1241,7 +1395,8 @@ const FinalTitle: React.FC = () => {
               WebkitBackgroundClip: "text",
               backgroundClip: "text",
               color: "transparent",
-              filter: `drop-shadow(0 0 22px ${C.magenta})`,
+              textShadow: "none",
+              filter: `drop-shadow(0 0 18px ${withAlpha(C.magenta, 0.85)}) drop-shadow(0 0 4px rgba(0,0,0,0.6))`,
             }}
           >
             AI
@@ -1266,9 +1421,9 @@ const FinalTitle: React.FC = () => {
         style={{
           position: "absolute",
           left: "50%",
-          top: 580,
+          top: FCY + 128,
           height: 2,
-          width: 900 * lineT,
+          width: 920 * lineT,
           transform: "translateX(-50%)",
           background: `linear-gradient(90deg, transparent, ${C.amber} 15%, ${C.cyan} 45%, ${C.violet} 70%, ${C.magenta} 85%, transparent)`,
           boxShadow: `0 0 12px ${C.cyan}`,
@@ -1279,7 +1434,7 @@ const FinalTitle: React.FC = () => {
           position: "absolute",
           left: 0,
           right: 0,
-          top: 616,
+          top: FCY + 160,
           textAlign: "center",
           fontFamily: FONT_CN,
           fontWeight: 700,
@@ -1288,7 +1443,7 @@ const FinalTitle: React.FC = () => {
           color: "#fff",
           opacity: sub,
           filter: sub < 1 ? `blur(${(1 - sub) * 8}px)` : undefined,
-          textShadow: "0 0 18px rgba(56,214,255,0.7), 0 2px 8px #000",
+          textShadow: "0 0 18px rgba(56,214,255,0.65), 0 2px 8px #000",
         }}
       >
         下一次<span style={{ color: C.gold, fontWeight: 900, textShadow: `0 0 24px ${C.gold}, 0 2px 8px #000` }}>翻倍</span>，会带来什么？
@@ -1302,37 +1457,41 @@ const WhiteOut: React.FC = () => {
   const frame = useCurrentFrame();
   const t = frame - FLASH;
   let a = 0;
-  if (t < 0) a = 0.85 * ease.inCubic(clamp((t + 4) / 4));
+  if (t < 0) a = 0.9 * ease.inCubic(clamp((t + 5) / 5));
   else if (t < 8) a = 1;
-  else a = Math.exp(-(t - 8) / 11);
+  else a = Math.exp(-(t - 8) / 7.5);
   if (a <= 0.003) return null;
   return <AbsoluteFill style={{ background: "#fff", opacity: a }} />;
 };
 
 export const Finale: React.FC = () => {
   const frame = useCurrentFrame();
-  const inA = prog(frame, 0, 14);
-  const dim = 0.55 * (1 - ease.inOutQuad(prog(frame, 55, 95)));
-  const sh = shake(frame, FLASH, 38, 34);
-  const shC = shake(frame, CLIMB, 14, 22);
-  const pre = frame >= WAVE_HIT - 10 && frame < FLASH ? (noise1(frame * 1.3) - 0.5) * 16 * prog(frame, WAVE_HIT - 10, FLASH) : 0;
-  const endFade = ease.inOutQuad(prog(frame, END - 38, END - 4));
+  const inA = ease.inOutQuad(prog(frame, 0, 14));
+  const dim = 0.5 * (1 - ease.inOutQuad(prog(frame, 50, 92)));
+  const sh = shake(frame, FLASH, 40, 36);
+  const shK = Math.max(0, 1 - (frame - FLASH) / 36);
+  const shC = shake(frame, CLIMB, 12, 22);
+  const rush = rushAt(frame);
+  const rum = (noise1(frame * 0.9 + 3) - 0.5) * 7 * rush;
+  const rum2 = (noise1(frame * 0.9 + 19) - 0.5) * 7 * rush;
+  const pre = frame >= WAVE_HIT - 10 && frame < FLASH ? (noise1(frame * 1.3) - 0.5) * 18 * prog(frame, WAVE_HIT - 10, FLASH) : 0;
+  const endFade = ease.inOutQuad(prog(frame, END - 40, END - 3));
   return (
     <AbsoluteFill style={{ background: "#000" }}>
       {frame < FLASH ? (
-        <AbsoluteFill style={{ opacity: inA, transform: `translate(${pre + shC.x}px, ${pre * 0.6 + shC.y}px)` }}>
+        <AbsoluteFill style={{ opacity: inA, transform: `translate(${pre + shC.x + rum}px, ${pre * 0.6 + shC.y + rum2}px)` }}>
           <World />
           <AbsoluteFill style={{ background: "#000", opacity: dim }} />
           <HereTag />
           <YearHud />
         </AbsoluteFill>
       ) : (
-        <AbsoluteFill style={{ transform: `translate(${sh.x}px, ${sh.y}px) rotate(${sh.r}rad)` }}>
+        <AbsoluteFill style={{ transform: `translate(${sh.x}px, ${sh.y}px) rotate(${sh.r * 0.12}rad) scale(${1 + 0.05 * shK * shK})` }}>
           <FinalField />
           <FinalTitle />
         </AbsoluteFill>
       )}
-      <Flash at={CLIMB} dur={16} color={C.cyan} peak={0.28} />
+      <Flash at={CLIMB} dur={14} color={C.cyan} peak={0.22} />
       <ChapterCard index={8} title="指数的真相" en="THE EXPONENTIAL TRUTH" color={C.gold} dur={85} />
       <Captions accent={C.gold} items={CAPS} />
       <WhiteOut />

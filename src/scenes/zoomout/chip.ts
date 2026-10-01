@@ -651,7 +651,16 @@ const drawTransistors = (g: CanvasRenderingContext2D, M: Map2, f: number, alpha:
         const x = X((i + 0.5) * GP);
         const y = Y(j * CH + FINS[q]);
         glow(g, x, y, r * 2.4, C.cyan, 0.55 * alpha);
-        if (big) glow(g, x, y, r * 0.7, "#ffffff", 0.6 * alpha);
+        if (big) {
+          glow(g, x, y, r * 0.7, "#ffffff", 0.6 * alpha);
+          // electrons streaming source -> drain through the open channel
+          for (let e = 0; e < 3; e++) {
+            const t = (f * 0.045 + e / 3 + ph) % 1;
+            const ex = X((i + 0.5 + (t - 0.5) * 1.7) * GP);
+            const ea = Math.sin(t * Math.PI);
+            glow(g, ex, y, r * 0.55, "#bff4ff", 0.9 * alpha * ea);
+          }
+        }
       }
     }
   g.restore();
@@ -668,10 +677,12 @@ const METALS: Layer[] = [
   { h: 6.5e-6, pitch: 14e-6, width: 5.5e-6, horiz: true, seg: 0, col: "#ffc878", phase: 0.11 },
 ];
 
+let blurC: HTMLCanvasElement | null = null;
+
 /** Interconnect layers above the transistors, each at its own height (true parallax as we pull back). */
-const drawMetals = (g: CanvasRenderingContext2D, T: [number, number], D: number, f: number) => {
-  g.save();
-  g.globalCompositeOperation = "lighter";
+const drawMetals = (g0: CanvasRenderingContext2D, T: [number, number], D: number, f: number, rot: number) => {
+  g0.save();
+  g0.globalCompositeOperation = "lighter";
   for (let li = 0; li < METALS.length; li++) {
     const L = METALS[li];
     if (D <= L.h * 1.05) continue;
@@ -680,6 +691,25 @@ const drawMetals = (g: CanvasRenderingContext2D, T: [number, number], D: number,
     const pPx = L.pitch * k;
     const a = clamp((2.6 - mag) / 1.0) * fade(pPx, 3, 9) * (li < 3 ? 0.55 : 0.42);
     if (a <= 0.01) continue;
+    // layers close to the lens are out of focus: render them small and scale up (cheap defocus)
+    const blur = clamp((mag - 1.12) / 0.5);
+    let g = g0;
+    let q = 1;
+    if (blur > 0.05) {
+      if (!blurC) {
+        blurC = document.createElement("canvas");
+        blurC.width = 960;
+        blurC.height = 540;
+      }
+      q = 1 / (2 + 10 * blur);
+      g = blurC.getContext("2d")!;
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.clearRect(0, 0, 960, 540);
+      g.setTransform(q, 0, 0, q, 0, 0);
+      g.translate(960, 540);
+      g.rotate(rot);
+      g.globalCompositeOperation = "lighter";
+    }
     const R = 1110 / k;
     const along0 = (L.horiz ? T[0] : T[1]) - R;
     const along1 = (L.horiz ? T[0] : T[1]) + R;
@@ -714,10 +744,10 @@ const drawMetals = (g: CanvasRenderingContext2D, T: [number, number], D: number,
         const [ax, ay] = toS(p0);
         const [bx, by] = toS(p1);
         const w = L.width * k;
-        g.fillStyle = withAlpha(L.col, 0.22 * a);
+        g.fillStyle = withAlpha(L.col, (0.22 + 0.2 * blur) * a);
         if (L.horiz) g.fillRect(ax, ay - w / 2, bx - ax, w);
         else g.fillRect(ax - w / 2, ay, w, by - ay);
-        g.fillStyle = withAlpha("#ffe3b0", 0.3 * a);
+        g.fillStyle = withAlpha("#ffe3b0", 0.3 * a * (1 - blur));
         if (L.horiz) g.fillRect(ax, ay - w * 0.12, bx - ax, w * 0.24);
         else g.fillRect(ax - w * 0.12, ay, w * 0.24, by - ay);
         // data pulse
@@ -731,8 +761,16 @@ const drawMetals = (g: CanvasRenderingContext2D, T: [number, number], D: number,
         }
       }
     }
+    if (g !== g0) {
+      g0.save();
+      g0.setTransform(1, 0, 0, 1, 0, 0);
+      g0.imageSmoothingEnabled = true;
+      g0.imageSmoothingQuality = "high";
+      g0.drawImage(blurC!, 0, 0, 1920 * q, 1080 * q, 0, 0, 1920, 1080);
+      g0.restore();
+    }
   }
-  g.restore();
+  g0.restore();
 };
 
 /** Multi-scale switching activity: grid cells light up and flicker. */
@@ -778,7 +816,25 @@ const drawSMActivity = (g: CanvasRenderingContext2D, M: Map2, f: number, alpha: 
       const v = cv + ((y0 + y1) / 2) * 1e-3;
       const w = 0.5 + 0.5 * Math.sin(s.id * 0.7 + b.x0 * 4 + b.y0 * 3 - f * 0.25);
       const fl = 0.6 + 0.4 * hash(s.id * 3.1 + b.x0 * 7 + Math.floor(f / 3));
-      glow(g, (u - M.ox) * M.k, (v - M.oy) * M.k, 0.42e-3 * M.k, C.cyan, alpha * (0.15 + 0.5 * w * w) * fl);
+      glow(g, (u - M.ox) * M.k, (v - M.oy) * M.k, 0.42e-3 * M.k, C.cyan, alpha * (0.2 + 0.62 * w * w) * fl);
+      // inside the tensor core: a systolic 4x4 MAC array, operands sweeping diagonally (matrix multiply)
+      const bw = (b.x1 - b.x0) * 1e-3;
+      const bh = (y1 - y0) * 1e-3;
+      const sub = (Math.min(bw, bh) / 4) * M.k;
+      const sa = clamp((sub - 10) / 14) * alpha;
+      if (sa > 0.02) {
+        const u0 = cu + b.x0 * 1e-3;
+        const v0 = cv + y0 * 1e-3;
+        for (let i = 0; i < 4; i++)
+          for (let j = 0; j < 4; j++) {
+            const ph = ((i + j) / 7 - f * 0.045 + hash(s.id * 1.3 + b.x0) * 3) % 1;
+            const k = Math.pow(0.5 + 0.5 * Math.cos((ph < 0 ? ph + 1 : ph) * Math.PI * 2), 3);
+            const x = (u0 + (bw * (i + 0.5)) / 4 - M.ox) * M.k;
+            const y = (v0 + (bh * (j + 0.5)) / 4 - M.oy) * M.k;
+            glow(g, x, y, sub * 0.75, C.cyan, sa * (0.08 + 0.6 * k));
+            if (k > 0.5) glow(g, x, y, sub * 0.22, "#e8fbff", sa * (k - 0.5) * 1.4);
+          }
+      }
     }
   }
   g.restore();
@@ -800,7 +856,7 @@ const drawDieActivity = (g: CanvasRenderingContext2D, M: Map2, f: number, alpha:
       glow(g, (cu - M.ox) * M.k, (cv - M.oy) * M.k, 1.7 * mm * M.k, side < 0 ? C.cyan : C.blue, alpha * (0.08 + 0.42 * w * w * w) * fl);
     }
     // crossbar packets running from the L2 band to the GPCs
-    for (let i = 0; i < 26; i++) {
+    for (let i = 0; i < 56; i++) {
       const lane = Math.floor(hash(i * 3.7 + side) * 8);
       const x = du + side * (-10.4 + 1.3 + lane * 2.6) * mm;
       const dir = hash(i * 5.1 + side) < 0.5 ? -1 : 1;
@@ -903,7 +959,7 @@ export const drawChipWorld = (
   if (dieActA > 0) drawDieActivity(g, M, f, alpha * dieActA, PKG_C[0], PKG_C[1]);
   g.globalAlpha = alpha;
   // 6. interconnect stack above, with parallax
-  drawMetals(g, T, D, f);
+  drawMetals(g, T, D, f, rot);
   g.restore();
 };
 

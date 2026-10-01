@@ -16,6 +16,8 @@ export const RACK = cue("zoomout", "rack");
 export const HALL = cue("zoomout", "hall");
 export const CITY = cue("zoomout", "city");
 export const EARTH = cue("zoomout", "earth");
+/** The closing beat: every network arc fires at once, the sun flares and "上千万倍" slams in. */
+export const FINAL = 812;
 
 // ---------------------------------------------------------------- layout (flat u, v)
 /** Focus transistor sits at the origin, inside a tensor-core block of one SM. */
@@ -34,7 +36,7 @@ export const TRAY_D = 0.8;
 export const MOD_COLS = [-0.165, -0.055, 0.055, 0.165];
 export const MOD_ROWS = [-0.3, -0.14];
 export const TRAY_C0: [number, number] = [MOD_C[0] + 0.055, MOD_C[1] + 0.14];
-export const PULL0 = 0.7; // how far the tray drawer is pulled out of the rack at the start
+export const PULL0 = 0.84; // how far the tray drawer is pulled out of the rack at the start
 export const RACK_U = TRAY_C0[0];
 export const RACK_FRONT = TRAY_C0[1] + TRAY_D / 2 - PULL0; // v of the rack front plane
 export const RACK_W = 0.6;
@@ -108,21 +110,24 @@ const logD = monotone(
       [86, 1.6e-4 * VD],
       [116, 5e-3 * VD],
       [146, 4.6e-2 * VD],
-      [190, 1.0e-1 * VD],
-      [236, 1.75e-1 * VD],
-      [270, 5.0e-1 * VD],
-      [305, 1.65 * VD],
-      [345, 2.2],
-      [390, 4.0],
+      [180, 1.36e-1 * VD],
+      [236, 1.85e-1 * VD],
+      [272, 5.5e-1 * VD],
+      [296, 2.0 * VD],
+      [345, 2.55],
+      [392, 5.0],
       [450, 10.5],
       [520, 34],
       [600, 250],
       [650, 1.5e3],
       [690, 1.5e4],
-      [730, 4e5],
-      [758, 6.5e6],
-      [790, 2.6e7],
-      [840, 3.15e7],
+      [712, 1.0e5],
+      [732, 6.5e5],
+      [748, 3.6e6],
+      [764, 1.75e7],
+      [778, 2.5e7],
+      [806, 2.85e7],
+      [840, 2.68e7],
     ] as [number, number][]
   ).map(([f, d]) => [f, Math.log10(d)] as [number, number]),
   0.004,
@@ -173,7 +178,7 @@ const NODES: [number, V3][] = [
   [700, [RACK_U + 17, FLOOR_Y, -(RACK_FRONT - 36)]],
   [2.5e4, [RACK_U + 2600, FLOOR_Y, -(RACK_FRONT - 3200)]],
   [3e5, [RACK_U + 2600, FLOOR_Y, -(RACK_FRONT - 3200)]],
-  [2.6e7, EARTH_C],
+  [1.7e7, EARTH_C],
 ];
 
 const targetAt = (D: number): V3 => {
@@ -206,10 +211,35 @@ export type Cam = {
   topDown: boolean;
 };
 
-/** Screen-space composition offset for the final globe (fractions of the view width). */
-const compose = (f: number) => {
-  const t = smoothstep((f - 718) / 76);
-  return { ox: 0.085 * t, oy: 0.036 * t };
+/** Lift (fraction of the view width) that keeps each beat's subject above the caption band. */
+const liftAt = monotone([
+  [140, 0],
+  [168, 0.085],
+  [200, 0.05],
+  [262, 0.05],
+  [284, 0.03],
+  [304, 0.066],
+  [362, 0.066],
+  [388, 0.05],
+  [412, 0.058],
+  [440, 0.06],
+  [470, 0.035],
+  [520, 0],
+]);
+
+/** Screen-space composition offset (fractions of the view width). */
+const compose = (f: number, D: number) => {
+  const e = smoothstep((f - 742) / 22);
+  let ox = 0;
+  let oy = liftAt(f);
+  if (e > 0) {
+    // the globe: centre at x = 700 px, its lowest point kept above the caption band
+    const rG = (FOCAL * R_EARTH) / Math.sqrt(Math.max(1, D * D - R_EARTH * R_EARTH));
+    const cy = clamp(785 - rG, 300, 420);
+    ox += e * ((960 - 700) / SW);
+    oy += e * ((540 - cy) / SW);
+  }
+  return { ox, oy };
 };
 
 export const camAt = (f: number): Cam => {
@@ -222,7 +252,7 @@ export const camAt = (f: number): Cam => {
   const cp = Math.cos(pitch);
   const sp = Math.sin(pitch);
   const view = (D * SW) / FOCAL;
-  const { ox, oy } = compose(f);
+  const { ox, oy } = compose(f, D);
   if (ox || oy) {
     // screen-right R = (cyw, 0, -syw); screen-down U = (-syw*sp, cp, -cyw*sp)
     T[0] += cyw * ox * view - syw * sp * oy * view;

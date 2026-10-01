@@ -3,7 +3,7 @@ import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { Canvas, glow, mix, withAlpha } from "../lib/canvas";
 import { C, FONT_CN, FONT_MONO } from "../lib/theme";
 import { clamp, ease, fadeInOut, hash, lerp, noise1, prog, rng, shake, sumShake, TAU } from "../lib/math";
-import { camera, project, type Cam } from "../lib/three";
+import { project, type Cam } from "../lib/three";
 import { Captions } from "../components/Caption";
 import { ChapterCard, Flash } from "../components/Hud";
 import { cue, sceneDuration, ticks } from "../timeline";
@@ -16,132 +16,196 @@ const PULSES = ticks("converge", "pulse");
 const WAVES = ticks("converge", "wave");
 
 const CAPS = [
-  { from: 80, to: 205, text: "算力、数据、算法——{{三条曲线}}终于在同一时刻交汇。" },
-  { from: 230, to: 400, text: "一场真正的爆发开始了。" },
+  { from: STREAMS + 10, to: IMPACT - 5, text: "算力、数据、算法——{{三条曲线}}终于在同一时刻交汇。" },
+  { from: IMPACT + 36, to: DUR - 20, text: "一场真正的爆发开始了。" },
 ];
+// how strongly the caption band (y >= ~760) must be kept clear; held a little past each caption's exit
+const CAP_HOLD = [4, 14];
+const bandAt = (f: number) => Math.max(...CAPS.map((c, i) => fadeInOut(f, c.from - 8, c.to + CAP_HOLD[i], 10, CAP_HOLD[i])));
 
 type P3 = [number, number, number];
 type Pt = { x: number; y: number };
+type Seg = number[];
+const frac = (v: number) => v - Math.floor(v);
+const WHITE = "#ffffff";
+const DEG = Math.PI / 180;
 
-const capAt = (f: number) => Math.max(...CAPS.map((c) => fadeInOut(f, c.from, c.to, 10, 10)));
+// =============================================================================================
+// world: a polar floor (y = 0, Y points down) and the apex O above its centre, where the three
+// exponential curves meet. Camera: an orbit rig around O. Before the blast it is a low dolly looking up
+// at the apex (slow drift, then a hard push-in during the charge); the blast throws it back and up, it
+// orbits the expanding network and finally dollies into it.
 
-// ---------------------------------------------------------------------------------------------
-// camera: orbits the convergence point O = (0,0,0); pushes in before the impact, is blown back by it
+const FOCAL = 1500;
+const H = 10; // apex height
+const O3: P3 = [0, -H, 0];
 
-const CX = 960;
-const CY = 415;
-const FOCAL = 1300;
+const inhaleAt = (f: number) => (f < IMPACT ? ease.inCubic(prog(f, IMPACT - 15, IMPACT - 1)) : 0);
+const chargeAt = (f: number) => ease.inQuad(prog(f, MEET - 15, IMPACT));
 
-const orbitCam = (az: number, el: number, dist: number, cy = CY): Cam =>
-  camera({
-    x: dist * Math.sin(az) * Math.cos(el),
-    y: -dist * Math.sin(el),
-    z: -dist * Math.cos(az) * Math.cos(el),
-    yaw: -az,
-    pitch: el,
-    f: FOCAL,
-    cx: CX,
-    cy,
-  });
-
-const inhaleAt = (f: number) => (f < IMPACT ? ease.inCubic(prog(f, IMPACT - 14, IMPACT)) : 0);
-
-const camAt = (f: number) => {
-  const post = ease.inOutSine(prog(f, IMPACT, DUR));
-  const lift = ease.inOutSine(prog(f, IMPACT + 10, IMPACT + 130));
-  const az = -0.14 + 0.001 * f + 0.7 * post;
-  const el = 0.74 - 0.26 * post;
-  const push = ease.inOutCubic(prog(f, 0, IMPACT - 10));
-  const inh = ease.inCubic(prog(f, IMPACT - 14, IMPACT));
-  const kick = ease.outExpo(prog(f, IMPACT, IMPACT + 50));
-  const drift = ease.inOutSine(prog(f, IMPACT + 50, DUR));
-  const dist = lerp(41, 32.5, push) - 2 * inh + 17 * kick + 3 * drift;
-  return orbitCam(az, el, dist, CY + 65 * lift);
+type Rig = { dist: number; el: number; az: number; cy: number };
+const preRig = (f: number): Rig => {
+  const drift = ease.inOutSine(prog(f, 0, MEET));
+  const push = ease.inCubic(prog(f, MEET - 4, IMPACT - 1));
+  const inh = inhaleAt(f);
+  return {
+    dist: lerp(44, 40.5, drift) - 12.5 * push - 1.2 * inh,
+    el: -0.161 + 0.06 * push,
+    az: lerp(-0.045, 0.04, drift) + 0.03 * push,
+    cy: 322 + 48 * push,
+  };
+};
+const PRE_END = preRig(IMPACT);
+const rigAt = (f: number): Rig => {
+  const t = f - IMPACT;
+  if (t < 0) return preRig(f);
+  const kick = ease.outExpo(clamp(t / 50));
+  const dolly = ease.inOutCubic(prog(f, IMPACT + 84, DUR + 8));
+  return {
+    dist: lerp(PRE_END.dist, 86, kick) - 47 * dolly,
+    el: lerp(PRE_END.el, 0.24, ease.inOutSine(prog(f, IMPACT + 2, IMPACT + 110))),
+    az: PRE_END.az + 1.5 * ease.inOutSine(prog(f, IMPACT + 4, DUR + 40)),
+    cy: lerp(PRE_END.cy, 470, ease.outCubic(prog(f, IMPACT, IMPACT + 40))),
+  };
+};
+const camAt = (f: number): Cam => {
+  const r = rigAt(f);
+  const dh = r.dist * Math.cos(r.el);
+  return { x: dh * Math.sin(r.az), y: -H - r.dist * Math.sin(r.el), z: -dh * Math.cos(r.az), yaw: -r.az, pitch: r.el, f: FOCAL, cx: 960, cy: r.cy };
 };
 
-const P = (cam: Cam, p: P3) => project(cam, p[0], p[1], p[2]);
-const frac = (v: number) => v - Math.floor(v);
+const P = (cam: Cam, p: P3, near = 0.4) => project(cam, p[0], p[1], p[2], near);
+const horizonY = (cam: Cam) => cam.cy - cam.f * Math.tan(cam.pitch);
 
-// ---------------------------------------------------------------------------------------------
-// the three streams: exponential curves (flat at the source, steep at the end) swirling into O
+// =============================================================================================
+// the three streams: each one is an exponential curve rising from its source on the floor to O.
+// Two wide arms come in from the left and the right; the third (gold) rises from the near side, so no
+// arm ever lines up with the view axis and all three curves read in profile.
 
-const R_SRC = 15;
-const DISK_Y = 0.6;
-const SWIRL = 0.95;
-const STREAM_W = 0.9;
-const expo = (s: number, k = 2.6) => (Math.exp(k * s) - 1) / (Math.exp(k) - 1);
+const K_EXP = 2.4;
+const EK = Math.exp(K_EXP) - 1;
+const expo = (s: number) => (Math.exp(K_EXP * s) - 1) / EK;
+const dexpo = (s: number) => (K_EXP * Math.exp(K_EXP * s)) / EK;
 
 const ARMS = [
-  { name: "算力", en: "COMPUTE", col: C.cyan, phi: (5 * Math.PI) / 3, kinds: ["chip"], lx: -195, ly: -34 },
-  { name: "数据", en: "DATA", col: C.magenta, phi: Math.PI / 3, kinds: ["photo", "token"], lx: 192, ly: -46 },
-  { name: "算法", en: "ALGORITHMS", col: C.gold, phi: Math.PI, kinds: ["graph"], lx: 190, ly: -40 },
+  { name: "算力", en: "COMPUTE", col: C.cyan, psi: -120 * DEG, R: 26, wid: 1.55, kinds: ["chip"], ign: STREAMS - 16, launch: STREAMS - 2 },
+  { name: "数据", en: "DATA", col: C.magenta, psi: 120 * DEG, R: 26, wid: 1.55, kinds: ["photo", "token"], ign: STREAMS - 10, launch: STREAMS + 2 },
+  { name: "算法", en: "ALGORITHMS", col: C.gold, psi: 26 * DEG, R: 13, wid: 0.95, kinds: ["graph"], ign: STREAMS + 6, launch: STREAMS + 8 },
 ];
+const LITE = ARMS.map((a) => mix(a.col, WHITE, 0.55));
 
 const armPos = (k: number, s: number, o1 = 0, o2 = 0): P3 => {
-  const e = expo(s);
-  const r = R_SRC * (1 - e);
-  const th = ARMS[k].phi + SWIRL * s;
-  const sp = STREAM_W * Math.pow(1 - s, 0.85);
-  const rr = r + o1 * sp;
-  return [rr * Math.sin(th), DISK_Y * (1 - e) + o2 * sp * 0.55, -rr * Math.cos(th)];
+  const A = ARMS[k];
+  const r = A.R * (1 - s);
+  const st = Math.sin(A.psi);
+  const ct = Math.cos(A.psi);
+  const h = H * expo(s);
+  if (o1 === 0 && o2 === 0) return [r * st, -h, -r * ct];
+  const w = A.wid * Math.pow(1 - s, 0.7) + 0.1;
+  const dh = H * dexpo(s);
+  const L = Math.hypot(A.R, dh);
+  const q = o2 * w * 0.75;
+  const rr = r + (q * dh) / L;
+  return [rr * st + o1 * w * ct, -(h + (q * A.R) / L), -rr * ct + o1 * w * st];
+};
+const groundOf = (k: number, s: number): P3 => {
+  const A = ARMS[k];
+  const r = A.R * (1 - s);
+  return [r * Math.sin(A.psi), 0, -r * Math.cos(A.psi)];
 };
 
-/** Head of each stream along its curve: 0 at the source, 1 at O (all three arrive together at MEET). */
-const frontAt = (f: number) => {
-  const u = prog(f, STREAMS, MEET);
-  return 0.3 * u + 0.7 * expo(u, 2.4);
+/** Where the head of each stream is along its curve (0 = source, 1 = O); accelerating. */
+const frontAt = (f: number, k: number) => {
+  const u = prog(f, ARMS[k].launch, MEET);
+  return 0.35 * ease.outCubic(u) + 0.65 * u * u * u;
 };
-/** Integrated flow (cycles) — accelerating. */
+/** Integrated particle flow (in path cycles): accelerating, then a last violent rush during the inhale. */
 const flowAt = (f: number) => {
-  const t = Math.max(0, f - STREAMS) / 30;
-  return 0.22 * t + 0.075 * t * t;
+  const t = Math.max(0, f - STREAMS + 8) / 30;
+  const it = Math.max(0, f - (IMPACT - 14)) / 14;
+  return 0.2 * t + 0.07 * t * t + 0.5 * Math.min(it, 1) * Math.min(it, 1) * Math.min(it, 1);
 };
-const chargeAt = (f: number) => ease.inQuad(prog(f, MEET - 20, IMPACT));
+/** After the meeting the sources are spent: the tails of the streams race up into the core. */
+const cutAt = (f: number) => 0.68 * ease.inOutSine(prog(f, MEET + 6, IMPACT - 4));
 const pulseAt = (f: number) => {
   let v = 0;
   for (const p of PULSES) {
     const t = f - p;
-    if (t >= 0 && t < 24) v = Math.max(v, Math.exp(-t / 5));
+    if (t >= 0 && t < 24) v = Math.max(v, Math.exp(-t / 4.5));
   }
   return v;
 };
 
-const N_PART = 1500;
-type Part = { a: number; sp: number; o1: number; o2: number; sz: number; br: number; b: number };
+const N_PART = 2200;
+type Part = { a: number; sp: number; o1: number; o2: number; sz: number; b: number; tl: number };
 const PARTS: Part[][] = ARMS.map((_, k) => {
   const r = rng(101 + k * 17);
   return Array.from({ length: N_PART }, () => {
-    const g1 = (r() + r() + r() - 1.5) / 1.5;
-    const g2 = (r() + r() + r() - 1.5) / 1.5;
-    return { a: r(), sp: 0.75 + r() * 0.5, o1: g1, o2: g2, sz: r(), br: 0.4 + 0.6 * r(), b: Math.floor(r() * 3) };
+    const wide = r() < 0.12 ? 1.9 : 1;
+    const g1 = ((r() + r() + r() - 1.5) / 1.5) * wide;
+    const g2 = ((r() + r() + r() - 1.5) / 1.5) * wide;
+    return { a: r(), sp: 0.75 + 0.5 * r(), o1: g1, o2: g2, sz: r(), b: r() < 0.2 ? 1 : 0, tl: 0.55 + 0.9 * r() };
   });
 });
 
-const N_SPR = 26;
-const SPRS = ARMS.map((_, k) => {
+const N_SPR = 30;
+const SPRS = ARMS.map((a, k) => {
   const r = rng(303 + k * 11);
   return Array.from({ length: N_SPR }, (_, i) => ({
-    a: (i + 0.5 * r()) / N_SPR,
-    sp: 0.9 + 0.2 * r(),
-    o1: (r() - 0.5) * 1.5,
-    o2: (r() - 0.5) * 1.0,
-    kind: i % ARMS[k].kinds.length,
-    rot: (r() - 0.5) * 0.5,
+    a: (i + 0.6 * r()) / N_SPR,
+    sp: 0.85 + 0.3 * r(),
+    o1: (r() - 0.5) * 1.6,
+    o2: (r() - 0.5) * 1.2,
+    kind: a.kinds[i % a.kinds.length],
+    rot: (r() - 0.5) * 0.6,
+    v: Math.floor(r() * 3),
   }));
 });
 
-const N_ACC = 1400;
-const ACC = (() => {
-  const r = rng(909);
-  return Array.from({ length: N_ACC }, (_, i) => ({ r: 0.35 + 3.0 * Math.pow(r(), 1.5), a: r() * TAU, y: (r() - 0.5) * 0.35, col: i % 3, br: r() }));
+// data motes drifting in from all around toward the apex (fills the sky above the curves)
+const N_MOTE = 300;
+const MOTES = (() => {
+  const r = rng(2024);
+  return Array.from({ length: N_MOTE }, (_, i) => ({
+    p: [(r() - 0.5) * 76, -2 - r() * 30, -14 + r() * 54] as P3,
+    ph: r(),
+    sp: 0.22 + 0.3 * r(),
+    col: i % 3,
+    sz: r(),
+  }));
 })();
 
-// ---------------------------------------------------------------------------------------------
-// sprites riding the streams (no digits, no text)
+// accretion disc around O (between the meeting and the blast): three spiral arms, one per stream
+const N_ACC = 2700;
+const ACC = (() => {
+  const r = rng(909);
+  // most particles hug their arm; the rest fill the disc between the arms
+  return Array.from({ length: N_ACC }, (_, i) => ({ arm: i % 3, u: r(), sp: 0.75 + 0.5 * r(), jit: (r() + r() - 1) * (r() < 0.62 ? 0.32 : 1.25), y: (r() - 0.5) * 0.5, br: r() }));
+})();
+const ACC_RMAX = 7;
+const ACC_TILT = 0.72;
+const ACC_WIND = 1.35;
+const accPos = (r: number, a: number, y: number): P3 => {
+  const x = Math.cos(a) * r;
+  const v = Math.sin(a) * r;
+  // disc spanned by (1,0,0) and (0,-sin T,cos T): its far side is tipped up so it reads as a wide ellipse
+  return [x, -H - v * Math.sin(ACC_TILT) + y * Math.cos(ACC_TILT), v * Math.cos(ACC_TILT) + y * Math.sin(ACC_TILT)];
+};
+const accFlow = (f: number) => {
+  const t = Math.max(0, f - MEET + 6);
+  return 0.006 * t + 0.00007 * t * t + 0.25 * inhaleAt(f);
+};
+const accSpin = (f: number) => {
+  const t = Math.max(0, f - MEET + 6);
+  return 0.018 * t + 0.0005 * t * t + 1.2 * inhaleAt(f);
+};
+
+// =============================================================================================
+// sprites riding the streams (glyph-free: chips, picture thumbnails, tokens, little node graphs)
 
 const sprites: Record<string, HTMLCanvasElement> = {};
-const sprite = (kind: string, col: string) => {
-  const id = kind + col;
+const sprite = (kind: string, col: string, v = 0) => {
+  const id = `${kind}|${col}|${v}`;
   const hit = sprites[id];
   if (hit) return hit;
   const c = document.createElement("canvas");
@@ -149,7 +213,7 @@ const sprite = (kind: string, col: string) => {
   const g = c.getContext("2d")!;
   g.lineCap = "round";
   g.lineJoin = "round";
-  const lite = mix(col, "#ffffff", 0.45);
+  const lite = mix(col, WHITE, 0.5);
   g.strokeStyle = lite;
   if (kind === "chip") {
     g.lineWidth = 3;
@@ -166,43 +230,58 @@ const sprite = (kind: string, col: string) => {
       g.lineTo(59, p);
     }
     g.stroke();
-    g.fillStyle = withAlpha(col, 0.35);
+    g.fillStyle = withAlpha(col, 0.4);
     g.fillRect(14, 14, 36, 36);
     g.lineWidth = 2.5;
     g.strokeRect(14, 14, 36, 36);
-    g.fillStyle = "rgba(255,255,255,0.9)";
-    g.fillRect(25, 25, 14, 14);
+    g.fillStyle = "rgba(255,255,255,0.92)";
+    if (v === 1) {
+      for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) g.fillRect(20 + i * 13, 20 + j * 13, 10, 10);
+    } else g.fillRect(24, 24, 16, 16);
   } else if (kind === "photo") {
-    g.fillStyle = withAlpha(col, 0.3);
+    g.fillStyle = withAlpha(col, 0.32);
     g.beginPath();
     g.roundRect(7, 13, 50, 38, 5);
     g.fill();
     g.lineWidth = 2.5;
     g.stroke();
-    g.fillStyle = "#fff";
-    g.beginPath();
-    g.arc(21, 24, 4.5, 0, TAU);
-    g.fill();
-    g.fillStyle = withAlpha(lite, 0.95);
-    g.beginPath();
-    g.moveTo(10, 48);
-    g.lineTo(25, 31);
-    g.lineTo(33, 40);
-    g.lineTo(42, 29);
-    g.lineTo(54, 48);
-    g.closePath();
-    g.fill();
+    g.fillStyle = WHITE;
+    if (v === 1) {
+      // portrait
+      g.beginPath();
+      g.arc(32, 27, 7, 0, TAU);
+      g.fill();
+      g.beginPath();
+      g.ellipse(32, 48, 13, 9, 0, Math.PI, TAU);
+      g.fill();
+    } else {
+      g.beginPath();
+      g.arc(21, 24, 4.5, 0, TAU);
+      g.fill();
+      g.fillStyle = withAlpha(lite, 0.95);
+      g.beginPath();
+      g.moveTo(10, 48);
+      g.lineTo(25, 31);
+      g.lineTo(33, 40);
+      g.lineTo(42, 29);
+      g.lineTo(54, 48);
+      g.closePath();
+      g.fill();
+    }
   } else if (kind === "token") {
-    g.fillStyle = withAlpha(col, 0.3);
+    g.fillStyle = withAlpha(col, 0.32);
     g.beginPath();
     g.roundRect(5, 20, 54, 24, 12);
     g.fill();
     g.lineWidth = 2.5;
     g.stroke();
-    g.fillStyle = "rgba(255,255,255,0.9)";
-    g.fillRect(14, 29, 10, 6);
-    g.fillRect(28, 29, 14, 6);
-    g.fillRect(46, 29, 5, 6);
+    g.fillStyle = "rgba(255,255,255,0.92)";
+    const ws = v === 1 ? [8, 18, 6] : [12, 14, 8];
+    let x = 14;
+    for (const ww of ws) {
+      g.fillRect(x, 29, ww, 6);
+      x += ww + 4;
+    }
   } else {
     const N: [number, number][] = [
       [12, 32],
@@ -226,7 +305,7 @@ const sprite = (kind: string, col: string) => {
     }
     g.stroke();
     for (const [x, y] of N) {
-      g.fillStyle = "#fff";
+      g.fillStyle = WHITE;
       g.beginPath();
       g.arc(x, y, 5, 0, TAU);
       g.fill();
@@ -239,109 +318,144 @@ const sprite = (kind: string, col: string) => {
   return c;
 };
 
-// ---------------------------------------------------------------------------------------------
-// the network that bursts out of the impact: nested shells of nodes; each shell is meshed to its
-// neighbours (a glowing geodesic web) and wired to the shell inside it (the layers)
+// =============================================================================================
+// the network that bursts out of O: nested shells (layers) of nodes. Every layer is meshed into a
+// geodesic web; every node is wired to one or two nodes of the layer inside it (fan-in edges).
 
-const NET_SHELLS = [12, 40, 90, 170, 280, 420, 600, 800];
-const NET_R = NET_SHELLS.map((_, k) => 1.1 * Math.pow(1.4, k));
-const HEAT = [0.5, 0.3, 0.12, 0];
-const PAL = ARMS.map((a) => HEAT.map((hw) => mix(a.col, "#ffffff", hw)));
+const SHELL_N = [20, 28, 38, 52, 72, 100, 138, 190, 262, 362, 500, 690];
+const NSH = SHELL_N.length;
+const SHELL_R = SHELL_N.map((_, k) => 1.3 * Math.pow(1.32, k));
+const SHELL_DELAY = SHELL_N.map((_, k) => 1 + 0.6 * k);
+const HUE_COLS = [C.cyan, C.magenta, C.gold, mix(C.cyan, C.magenta, 0.5), mix(C.magenta, C.gold, 0.5), mix(C.gold, C.cyan, 0.5)];
+const HEAT = [0.62, 0.38, 0.16, 0];
+const PAL = HUE_COLS.map((c) => HEAT.map((hw) => mix(c, WHITE, hw)));
+// colour regions of the network: compute on the left, data on the right, algorithms on top
+const HUE_ANCHORS: P3[] = [
+  [-0.85, 0.3, -0.43],
+  [0.85, 0.3, -0.43],
+  [0, -0.95, 0.3],
+];
+const WAVE_COLS = [WHITE, C.gold, C.cyan, C.magenta, C.gold, WHITE];
 
 type NNode = { k: number; d: P3; rj: number; hue: number; lvl: number; h: number };
-type Edge = { a: number; b: number; k: number; mesh: boolean };
+// cls: 0 = fan-in (radial) edge, 1 = mesh edge, 2 = mesh edge on one of the two outer shells (kept faint)
+type Edge = { a: number; b: number; k: number; cls: number; key: number };
 const NODES: NNode[] = [];
-const EDGES: Edge[] = []; // radial: a = inner node (-1: centre), b = outer node; mesh: both on shell k
+const EDGES: Edge[] = [];
+const RADIAL: number[][] = SHELL_N.map(() => []);
 (() => {
   const r = rng(777);
   const starts: number[] = [];
-  NET_SHELLS.forEach((n, k) => {
+  SHELL_N.forEach((n, k) => {
     starts.push(NODES.length);
     const rot = r() * TAU;
     for (let i = 0; i < n; i++) {
       const y = 1 - (2 * (i + 0.5)) / n;
       const rad = Math.sqrt(1 - y * y);
       const th = i * 2.399963 + rot;
-      const j = 0.35 / Math.sqrt(n);
+      const j = 0.5 / Math.sqrt(n);
       let d: P3 = [Math.cos(th) * rad + (r() - 0.5) * j, y + (r() - 0.5) * j, Math.sin(th) * rad + (r() - 0.5) * j];
       const len = Math.hypot(d[0], d[1], d[2]);
       d = [d[0] / len, d[1] / len, d[2] / len];
-      let best = 0;
-      let bv = -9;
-      ARMS.forEach((a, q) => {
-        const v = d[0] * Math.sin(a.phi) - d[2] * Math.cos(a.phi) + (r() - 0.5) * 0.6;
-        if (v > bv) {
-          bv = v;
-          best = q;
-        }
-      });
-      const lvl = Math.min(3, Math.max(0, Math.floor(k / 2)));
-      NODES.push({ k, d, rj: 0.94 + 0.12 * r(), hue: best, lvl, h: r() });
+      const ws = HUE_ANCHORS.map((a) => d[0] * a[0] + d[1] * a[1] + d[2] * a[2] + (r() - 0.5) * 0.45);
+      const ord = [0, 1, 2].sort((p, q) => ws[q] - ws[p]);
+      let hue = ord[0];
+      if (ws[ord[0]] - ws[ord[1]] < 0.2) {
+        const pair = [ord[0], ord[1]].sort().join("");
+        hue = pair === "01" ? 3 : pair === "12" ? 4 : 5;
+      }
+      const lvl = k <= 2 ? 0 : k <= 5 ? 1 : k <= 8 ? 2 : 3;
+      // the outer shells get a ragged radius so their silhouette dissolves instead of tracing a polygon
+      const rj = k >= NSH - 2 ? 0.85 + 0.35 * r() : k >= NSH - 4 ? 0.92 + 0.16 * r() : 0.96 + 0.08 * r();
+      NODES.push({ k, d, rj, hue, lvl, h: r() });
     }
   });
   starts.push(NODES.length);
+  const keyOf = (b: number, cls: number) => {
+    const n = NODES[b];
+    return ((((n.hue * 4 + n.lvl) * 2 + (n.k % 2)) * 3 + cls) * 2) | 0;
+  };
+  const add = (a: number, b: number, k: number, cls: number) => {
+    if (cls === 0) RADIAL[k].push(EDGES.length);
+    EDGES.push({ a, b, k, cls, key: keyOf(b, cls) });
+  };
   const dot = (a: P3, b: P3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-  for (let k = 0; k < NET_SHELLS.length; k++) {
+  for (let k = 0; k < NSH; k++) {
     const seen = new Set<number>();
     for (let i = starts[k]; i < starts[k + 1]; i++) {
       const d = NODES[i].d;
-      // radial wiring to the shell inside
-      if (k === 0) EDGES.push({ a: -1, b: i, k, mesh: false });
+      if (k === 0) add(-1, i, k, 0);
       else {
-        let b1 = -1;
-        let b2 = -1;
-        let v1 = -9;
-        let v2 = -9;
-        for (let j = starts[k - 1]; j < starts[k]; j++) {
-          const v = dot(d, NODES[j].d);
-          if (v > v1) {
-            v2 = v1;
-            b2 = b1;
-            v1 = v;
-            b1 = j;
-          } else if (v > v2) {
-            v2 = v;
-            b2 = j;
-          }
-        }
-        EDGES.push({ a: b1, b: i, k, mesh: false });
-        if (b2 >= 0 && r() < 0.55) EDGES.push({ a: b2, b: i, k, mesh: false });
+        const cand: [number, number][] = [];
+        for (let j = starts[k - 1]; j < starts[k]; j++) cand.push([dot(d, NODES[j].d), j]);
+        cand.sort((p, q) => q[0] - p[0]);
+        add(cand[0][1], i, k, 0);
+        const m = Math.min(cand.length - 1, 5);
+        if (m >= 1 && r() < 0.55) add(cand[1 + Math.floor(r() * m)][1], i, k, 0);
       }
-      // mesh to the 2 nearest neighbours on the same shell
-      if (k < 1) continue;
       const near: [number, number][] = [];
       for (let j = starts[k]; j < starts[k + 1]; j++) {
         if (j === i) continue;
         const v = dot(d, NODES[j].d);
-        if (near.length < 2) {
+        if (near.length < 3) {
           near.push([v, j]);
-          near.sort((a, b) => b[0] - a[0]);
-        } else if (v > near[1][0]) {
-          near[1] = [v, j];
-          near.sort((a, b) => b[0] - a[0]);
+          near.sort((p, q) => q[0] - p[0]);
+        } else if (v > near[2][0]) {
+          near[2] = [v, j];
+          near.sort((p, q) => q[0] - p[0]);
         }
       }
       for (const [, j] of near) {
         const key = Math.min(i, j) * 100000 + Math.max(i, j);
         if (seen.has(key)) continue;
         seen.add(key);
-        EDGES.push({ a: i, b: j, k, mesh: true });
+        add(i, j, k, k >= NSH - 2 ? 2 : 1);
       }
     }
   }
 })();
+const N_BUCKET = 6 * 4 * 2 * 3 * 2;
+const BUCKET_STYLE = Array.from({ length: N_BUCKET }, (_, key) => {
+  const near = key % 2;
+  const cls = Math.floor(key / 2) % 3;
+  const odd = Math.floor(key / 6) % 2;
+  const pal = Math.floor(key / 12);
+  const lvl = pal % 4;
+  // at rest the fan-in wiring stays thin (it lights up when a wave runs along it); the meshes of the even
+  // layers carry the shell structure
+  const base = cls === 0 ? (near ? 0.15 : 0.055) : (near ? 0.15 : 0.055) * (cls === 2 ? 0.4 : 1);
+  return {
+    col: PAL[Math.floor(pal / 4)][lvl],
+    alpha: base * [0.5, 0.72, 0.9, 1][lvl] * (odd ? 0.55 : 1),
+    width: near ? (cls === 0 ? 1.5 : 1.2) : 1,
+  };
+});
 
 const shellScale = (k: number, t: number) => {
-  const tt = t - 1.0 * k;
+  const tt = t - SHELL_DELAY[k];
   if (tt <= 0) return 0;
-  return 1 - Math.exp(-tt / (4 + 2 * k));
+  return 1 - Math.exp(-tt / (4.5 + 0.5 * k));
 };
-const SIG_D = 5; // frames for a signal to cross one layer
+const SIG_D = 4; // frames for a forward-pass signal to cross one layer
 
-// ---------------------------------------------------------------------------------------------
-// blast: sparks + shockwave rings
+// drifting dust around the network: a parallax reference once the floor and horizon are gone
+const N_DUST = 380;
+const DUST = (() => {
+  const r = rng(8080);
+  return Array.from({ length: N_DUST }, () => {
+    const u = r() * 2 - 1;
+    const th = r() * TAU;
+    const rad = Math.sqrt(1 - u * u);
+    const R = 14 + 80 * Math.pow(r(), 0.6);
+    return { p: [Math.cos(th) * rad * R, -H + u * R * 0.8, Math.sin(th) * rad * R] as P3, sz: r(), tw: r() * 30 };
+  });
+})();
 
-const N_SPARK = 2800;
+// =============================================================================================
+// the blast
+
+const N_SPARK = 3600;
+const SPARK_COLS = [C.cyan, C.magenta, C.gold, WHITE];
 const SPARKS = (() => {
   const r = rng(4242);
   return Array.from({ length: N_SPARK }, (_, i) => {
@@ -349,46 +463,110 @@ const SPARKS = (() => {
     const th = r() * TAU;
     const rad = Math.sqrt(1 - u * u);
     let d: P3 = [Math.cos(th) * rad, u, Math.sin(th) * rad];
-    if (i % 20 < 11) {
-      d = [d[0], d[1] * 0.18, d[2]];
+    if (i % 20 < 4) {
+      // a flattened equatorial disc of debris
+      d = [d[0], d[1] * 0.16, d[2]];
       const l = Math.hypot(d[0], d[1], d[2]);
       d = [d[0] / l, d[1] / l, d[2] / l];
     }
-    const v = 0.25 + 1.5 * Math.pow(r(), 2);
-    return { d, v, drag: 0.035 + 0.05 * r(), life: 16 + 75 * r(), col: i % 10 === 0 ? 3 : i % 3, sz: r() };
+    const v = 0.5 + 1.5 * Math.pow(r(), 2);
+    return { d, v, drag: 0.03 + 0.05 * r(), life: 14 + 58 * r(), col: i % 9 === 0 ? 3 : i % 3, sz: r() };
   });
 })();
-const SPARK_COLS = [C.cyan, C.magenta, C.gold, "#ffffff"];
 const sparkAt = (s: (typeof SPARKS)[number], t: number): P3 => {
   const d = (s.v / s.drag) * (1 - Math.exp(-s.drag * Math.max(0, t)));
-  return [s.d[0] * d, s.d[1] * d, s.d[2] * d];
+  return [s.d[0] * d, -H + s.d[1] * d + 0.0004 * t * t, s.d[2] * d];
 };
 
-const RINGS = [
-  { rx: 0, rz: 0, v: 36, tau: 20, delay: 0, col: "#ffffff" },
-  { rx: 0, rz: 0, v: 25, tau: 28, delay: 4, col: C.gold },
-  { rx: 0, rz: 0, v: 16, tau: 34, delay: 9, col: C.cyan },
-  { rx: 0.75, rz: 0, v: 27, tau: 24, delay: 2, col: C.magenta },
-  { rx: -0.6, rz: 0.9, v: 22, tau: 28, delay: 5, col: C.cyan },
-  { rx: 0.35, rz: -1.1, v: 19, tau: 32, delay: 11, col: C.gold },
-  { rx: 1.45, rz: 0.3, v: 30, tau: 22, delay: 7, col: "#ffffff" },
-];
-
-// background stars on a far sphere
-const STARS = (() => {
-  const r = rng(55);
-  return Array.from({ length: 1100 }, () => {
+// slow embers that linger after the flash
+const N_EMBER = 400;
+const EMBERS = (() => {
+  const r = rng(5151);
+  return Array.from({ length: N_EMBER }, (_, i) => {
     const u = r() * 2 - 1;
     const th = r() * TAU;
     const rad = Math.sqrt(1 - u * u);
-    return { p: [Math.cos(th) * rad * 260, u * 260, Math.sin(th) * rad * 260] as P3, sz: Math.pow(r(), 3), tw: r() * 50 };
+    return { d: [Math.cos(th) * rad, u, Math.sin(th) * rad] as P3, v: 0.08 + 0.5 * r(), life: 70 + 120 * r(), col: i % 4, sz: r(), tw: r() * 40 };
   });
 })();
 
-// ---------------------------------------------------------------------------------------------
+// the stream glyphs, flung out by the blast
+const N_DEB = 96;
+const DEBRIS = (() => {
+  const r = rng(6161);
+  return Array.from({ length: N_DEB }, (_, i) => {
+    const k = i % 3;
+    const u = r() * 2 - 1;
+    const th = r() * TAU;
+    const rad = Math.sqrt(1 - u * u);
+    return {
+      k,
+      kind: ARMS[k].kinds[Math.floor(r() * ARMS[k].kinds.length)],
+      v: Math.floor(r() * 2),
+      d: [Math.cos(th) * rad, u * 0.7, Math.sin(th) * rad] as P3,
+      sp: 0.5 + 1.1 * r(),
+      spin: (r() - 0.5) * 0.4,
+      rot: r() * TAU,
+      life: 45 + 50 * r(),
+    };
+  });
+})();
+
+const RINGS = [
+  { rx: 0, rz: 0, v: 44, tau: 20, delay: 0, col: WHITE },
+  { rx: 0, rz: 0, v: 30, tau: 26, delay: 4, col: C.gold },
+  { rx: 0, rz: 0, v: 19, tau: 30, delay: 9, col: C.cyan },
+  { rx: 1.2, rz: 0.15, v: 34, tau: 22, delay: 1, col: C.magenta },
+  { rx: -0.65, rz: 0.95, v: 27, tau: 26, delay: 3, col: C.cyan },
+  { rx: 0.4, rz: -1.15, v: 23, tau: 28, delay: 7, col: C.gold },
+  { rx: 1.55, rz: 0.5, v: 38, tau: 20, delay: 5, col: WHITE },
+  { rx: -1.3, rz: -0.4, v: 16, tau: 30, delay: 12, col: C.magenta },
+];
+const ringPoint = (rx: number, rz: number, a: number, r: number): P3 => {
+  const x = Math.cos(a) * r;
+  const z0 = Math.sin(a) * r;
+  const y1 = -z0 * Math.sin(rx);
+  const z1 = z0 * Math.cos(rx);
+  return [x * Math.cos(rz) - y1 * Math.sin(rz), -H + x * Math.sin(rz) + y1 * Math.cos(rz), z1];
+};
+
+// stars on the upper half of a far sphere around O
+const STARS = (() => {
+  const r = rng(55);
+  return Array.from({ length: 1300 }, () => {
+    const u = Math.pow(r(), 0.8);
+    const th = r() * TAU;
+    const rad = Math.sqrt(1 - u * u);
+    return { p: [Math.cos(th) * rad * 300, -H - u * 300 + 20, Math.sin(th) * rad * 300] as P3, sz: Math.pow(r(), 3), tw: r() * 50 };
+  });
+})();
+
+// =============================================================================================
 // drawing helpers
 
-type Seg = number[];
+/**
+ * Glows grouped by colour: drawing every sprite of one colour in a row lets the canvas batch them, which is
+ * many times faster than alternating sprites call by call.
+ */
+class GlowBatch {
+  private m = new Map<string, number[]>();
+  add(col: string, x: number, y: number, r: number, a: number) {
+    if (a <= 0.002 || r <= 0.05) return;
+    let l = this.m.get(col);
+    if (!l) {
+      l = [];
+      this.m.set(col, l);
+    }
+    l.push(x, y, r, a);
+  }
+  flush(ctx: CanvasRenderingContext2D) {
+    this.m.forEach((l, col) => {
+      for (let i = 0; i < l.length; i += 4) glow(ctx, l[i], l[i + 1], l[i + 2], col, l[i + 3]);
+    });
+    this.m.clear();
+  }
+}
+
 const strokeSegs = (ctx: CanvasRenderingContext2D, segs: Seg, color: string, width: number, alpha: number) => {
   if (!segs.length || alpha <= 0.003) return;
   ctx.strokeStyle = withAlpha(color, Math.min(1, alpha));
@@ -400,64 +578,129 @@ const strokeSegs = (ctx: CanvasRenderingContext2D, segs: Seg, color: string, wid
   }
   ctx.stroke();
 };
-
 const polyline = (ctx: CanvasRenderingContext2D, pts: Pt[]) => {
   ctx.beginPath();
   pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
 };
-
 const glowLine = (ctx: CanvasRenderingContext2D, pts: Pt[], color: string, width: number, alpha: number) => {
   if (pts.length < 2 || alpha <= 0.003) return;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  ctx.strokeStyle = withAlpha(color, 0.1 * alpha);
+  ctx.strokeStyle = withAlpha(color, Math.min(1, 0.1 * alpha));
   ctx.lineWidth = width * 7;
   polyline(ctx, pts);
   ctx.stroke();
-  ctx.strokeStyle = withAlpha(color, 0.3 * alpha);
+  ctx.strokeStyle = withAlpha(color, Math.min(1, 0.3 * alpha));
   ctx.lineWidth = width * 2.6;
   polyline(ctx, pts);
   ctx.stroke();
-  ctx.strokeStyle = withAlpha(mix(color, "#ffffff", 0.6), Math.min(1, alpha));
+  ctx.strokeStyle = withAlpha(mix(color, WHITE, 0.6), Math.min(1, alpha));
   ctx.lineWidth = width;
   polyline(ctx, pts);
   ctx.stroke();
 };
+const chromaRing = (ctx: CanvasRenderingContext2D, x: number, y: number, r: number, ry: number, alpha: number, width: number, mid = WHITE) => {
+  if (alpha <= 0.005 || r <= 1) return;
+  ([
+    [C.cyan, 0.975, 0.7],
+    [mid, 1, 1],
+    [C.magenta, 1.025, 0.7],
+  ] as const).forEach(([col, k, a]) => {
+    ctx.strokeStyle = withAlpha(col, Math.min(1, alpha * a));
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r * k, ry * k, 0, 0, TAU);
+    ctx.stroke();
+  });
+};
+/** A soft glowing ring: wide faint halo + thin bright core. */
+const haloRing = (ctx: CanvasRenderingContext2D, x: number, y: number, r: number, ry: number, color: string, width: number, alpha: number) => {
+  if (alpha <= 0.004 || r <= 1) return;
+  for (const [wk, ak, c] of [
+    [6, 0.1, color],
+    [2.4, 0.3, color],
+    [1, 1, mix(color, WHITE, 0.6)],
+  ] as const) {
+    ctx.strokeStyle = withAlpha(c, Math.min(1, alpha * ak));
+    ctx.lineWidth = width * wk;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r, ry, 0, 0, TAU);
+    ctx.stroke();
+  }
+};
 
-// ---------------------------------------------------------------------------------------------
-// scene layers
+// =============================================================================================
+// layers
 
+const BG_SCALE = 0.25;
+let bgCanvas: HTMLCanvasElement | null = null;
 const drawBackground = (ctx: CanvasRenderingContext2D, w: number, h: number, f: number, cam: Cam, O: Pt) => {
   const c = chargeAt(f);
   const t = f - IMPACT;
-  const after = t >= 0 ? Math.exp(-t / 60) : 0;
-  const bg = ctx.createRadialGradient(O.x, O.y, 0, O.x, O.y, w * 0.85);
-  bg.addColorStop(0, mix("#0a0e1e", "#1d1424", Math.max(0.6 * c, after)));
-  bg.addColorStop(0.5, "#04060f");
-  bg.addColorStop(1, "#010207");
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, w, h);
-  ctx.globalCompositeOperation = "lighter";
-  // nebulae far behind each source
-  ARMS.forEach((a) => {
-    const s = P(cam, [Math.sin(a.phi) * 120, 30, -Math.cos(a.phi) * 120]);
-    if (s) glow(ctx, s.x, s.y, 760, a.col, 0.07 + 0.05 * c + 0.1 * after, 0.02);
+  const after = t >= 0 ? Math.exp(-t / 70) : 0;
+  const hy = horizonY(cam);
+  // the soft layers (space gradient, nebulae, ground, horizon glow) are painted at quarter resolution
+  if (!bgCanvas) {
+    bgCanvas = document.createElement("canvas");
+    bgCanvas.width = Math.round(w * BG_SCALE);
+    bgCanvas.height = Math.round(h * BG_SCALE);
+  }
+  const b = bgCanvas.getContext("2d")!;
+  b.setTransform(BG_SCALE, 0, 0, BG_SCALE, 0, 0);
+  b.globalAlpha = 1;
+  b.globalCompositeOperation = "source-over";
+  const bg = b.createRadialGradient(O.x, O.y, 0, O.x, O.y, w * 0.9);
+  bg.addColorStop(0, mix("#0b1024", "#24162a", Math.max(0.7 * c, after)));
+  bg.addColorStop(0.45, "#050816");
+  bg.addColorStop(1, "#010208");
+  b.fillStyle = bg;
+  b.fillRect(0, 0, w, h);
+  b.globalCompositeOperation = "lighter";
+  // nebulae far out along each stream's direction
+  ARMS.forEach((a, k) => {
+    const s = P(cam, [[-170, 170, 10][k], [-70, -80, -120][k], 230]);
+    if (s) glow(b, s.x, s.y, 900, a.col, 0.06 + 0.05 * c + 0.12 * after + (t >= 0 ? 0.03 : 0), 0.02);
   });
-  // stars (radially smeared by the blast)
-  const warp = t >= 0 ? 0.5 * Math.exp(-t / 9) : 0;
-  ctx.fillStyle = "#fff";
-  ctx.strokeStyle = "rgba(220,235,255,0.55)";
-  ctx.lineWidth = 1.5;
+  b.globalCompositeOperation = "source-over";
+  // the ground below the horizon and the horizon glow: both gone soon after the blast
+  const ga = 1 - prog(f, IMPACT + 5, IMPACT + 45);
+  if (ga > 0 && hy < h) {
+    const y0 = Math.max(0, hy);
+    const g = b.createLinearGradient(0, y0, 0, h);
+    g.addColorStop(0, `rgba(4,6,16,${0.55 * ga})`);
+    g.addColorStop(1, `rgba(1,2,6,${0.92 * ga})`);
+    b.fillStyle = g;
+    b.fillRect(0, y0, w, h - y0);
+  }
+  if (ga > 0 && hy > -150 && hy < h + 150) {
+    b.globalCompositeOperation = "lighter";
+    const hg = b.createLinearGradient(0, hy - 90, 0, hy + 60);
+    const ha = (0.16 + 0.22 * c + 0.2 * after) * ga;
+    hg.addColorStop(0, "rgba(60,90,200,0)");
+    hg.addColorStop(0.6, withAlpha(mix("#3a5cff", C.gold, 0.25 + 0.4 * c), ha));
+    hg.addColorStop(0.62, withAlpha(mix("#9fb5ff", WHITE, c), 0.5 * ha));
+    hg.addColorStop(1, "rgba(60,90,200,0)");
+    b.fillStyle = hg;
+    b.fillRect(0, hy - 90, w, 150);
+    b.globalCompositeOperation = "source-over";
+  }
+  ctx.drawImage(bgCanvas, 0, 0, w, h);
+  // stars (smeared radially by the blast), at full resolution
+  const warp = t >= 0 ? 0.55 * Math.exp(-t / 9) : 0;
+  ctx.globalCompositeOperation = "lighter";
+  ctx.fillStyle = WHITE;
+  ctx.strokeStyle = "rgba(220,235,255,0.5)";
+  ctx.lineWidth = 1.4;
   ctx.beginPath();
   for (const st of STARS) {
-    const p = P(cam, st.p);
+    const p = P(cam, st.p, 1);
     if (!p || p.x < -10 || p.x > w + 10 || p.y < -10 || p.y > h + 10) continue;
     const tw = 0.35 + 0.65 * noise1(f * 0.05 + st.tw);
     if (warp > 0.01) {
       ctx.moveTo(p.x, p.y);
       ctx.lineTo(p.x + (p.x - O.x) * warp, p.y + (p.y - O.y) * warp);
     } else {
-      ctx.globalAlpha = 0.25 + 0.6 * st.sz * tw;
+      ctx.globalAlpha = 0.22 + 0.6 * st.sz * tw;
       const r = 0.8 + 1.8 * st.sz;
       ctx.fillRect(p.x - r / 2, p.y - r / 2, r, r);
     }
@@ -467,24 +710,28 @@ const drawBackground = (ctx: CanvasRenderingContext2D, w: number, h: number, f: 
   ctx.globalCompositeOperation = "source-over";
 };
 
-/** Polar grid on the stream disk; the blast sends a ripple through it. */
-const drawGrid = (ctx: CanvasRenderingContext2D, f: number, cam: Cam, alpha: number) => {
-  if (alpha <= 0) return;
+/** Polar grid on the floor; the blast sends a ripple across it. */
+const drawFloor = (ctx: CanvasRenderingContext2D, f: number, cam: Cam, alpha: number) => {
+  if (alpha <= 0.01) return;
   const t = f - IMPACT;
-  const rs = t >= 0 ? 36 * (1 - Math.exp(-t / 24)) : -99;
-  const amp = t >= 0 ? 2.4 * Math.exp(-t / 45) : 0;
-  const yAt = (r: number) => DISK_Y - amp * Math.exp(-Math.pow((r - rs) / 1.8, 2));
+  const rs = t >= 0 ? 75 * (1 - Math.exp(-t / 26)) : -99;
+  const amp = t >= 0 ? 2.6 * Math.exp(-t / 34) : 0;
+  const yAt = (r: number) => -amp * Math.exp(-Math.pow((r - rs) / 2.6, 2));
+  const grow = ease.outCubic(prog(f, 4, 60));
   ctx.globalCompositeOperation = "lighter";
-  ctx.lineWidth = 1.3;
-  for (let ri = 1; ri <= 9; ri++) {
-    const r = ri * 3;
-    const near = t >= 0 ? Math.exp(-Math.pow((r - rs) / 2.5, 2)) * Math.exp(-t / 60) : 0;
-    ctx.strokeStyle = withAlpha(mix("#5a7cff", "#ffffff", near), (0.13 + 0.45 * near) * alpha * clamp(1.4 - r / 30));
+  const RMAX = 46;
+  for (let ri = 1; ri <= 23; ri++) {
+    const r = ri * 2;
+    if (r > RMAX * grow + 2) break;
+    const near = t >= 0 ? Math.exp(-Math.pow((r - rs) / 3, 2)) * Math.exp(-t / 70) : 0;
+    const base = (ri % 4 === 0 ? 0.2 : 0.1) * clamp(1.25 - r / RMAX) * clamp((RMAX * grow + 2 - r) / 6);
+    ctx.strokeStyle = withAlpha(mix("#4f6dff", WHITE, near), (base + 0.6 * near) * alpha);
+    ctx.lineWidth = ri % 4 === 0 ? 1.6 : 1.1;
     ctx.beginPath();
     let pen = false;
-    for (let i = 0; i <= 96; i++) {
-      const a = (i / 96) * TAU;
-      const p = project(cam, Math.sin(a) * r, yAt(r), -Math.cos(a) * r, 0.5);
+    for (let i = 0; i <= 120; i++) {
+      const a = (i / 120) * TAU;
+      const p = project(cam, Math.sin(a) * r, yAt(r), -Math.cos(a) * r, 0.6);
       if (!p) {
         pen = false;
         continue;
@@ -495,13 +742,14 @@ const drawGrid = (ctx: CanvasRenderingContext2D, f: number, cam: Cam, alpha: num
     }
     ctx.stroke();
   }
-  ctx.strokeStyle = withAlpha("#5a7cff", 0.08 * alpha);
+  ctx.strokeStyle = withAlpha("#4f6dff", 0.075 * alpha);
+  ctx.lineWidth = 1;
   ctx.beginPath();
-  for (let i = 0; i < 36; i++) {
-    const a = (i / 36) * TAU;
+  for (let i = 0; i < 48; i++) {
+    const a = (i / 48) * TAU;
     let pen = false;
-    for (let r = 1.5; r <= 27; r += 1.5) {
-      const p = project(cam, Math.sin(a) * r, yAt(r), -Math.cos(a) * r, 0.5);
+    for (let r = 1; r <= RMAX * grow; r += 1.5) {
+      const p = project(cam, Math.sin(a) * r, yAt(r), -Math.cos(a) * r, 0.6);
       if (!p) {
         pen = false;
         continue;
@@ -515,32 +763,59 @@ const drawGrid = (ctx: CanvasRenderingContext2D, f: number, cam: Cam, alpha: num
   ctx.globalCompositeOperation = "source-over";
 };
 
+/** Data motes drifting in toward the apex from everywhere (pre-impact). */
+const drawMotes = (ctx: CanvasRenderingContext2D, f: number, cam: Cam) => {
+  const vis = prog(f, STREAMS - 24, STREAMS + 30) * (1 - inhaleAt(f));
+  if (vis <= 0.01 || f >= IMPACT) return;
+  const c = chargeAt(f);
+  const fl = flowAt(f) + 0.05 * f / 30;
+  const segs: Seg[] = [[], [], []];
+  const gb = new GlowBatch();
+  for (const m of MOTES) {
+    const u = frac(m.ph + fl * m.sp * 0.5);
+    const e = ease.inCubic(u);
+    const e0 = ease.inCubic(Math.max(0, u - 0.03 - 0.03 * c));
+    const at = (k: number): P3 => [lerp(m.p[0], O3[0], k), lerp(m.p[1], O3[1], k), lerp(m.p[2], O3[2], k)];
+    const A = P(cam, at(e), 1);
+    const B = P(cam, at(e0), 1);
+    if (!A || !B) continue;
+    const a = Math.sin(Math.PI * u) * vis * (0.5 + 0.4 * c);
+    segs[m.col].push(B.x, B.y, A.x, A.y);
+    gb.add(ARMS[m.col].col, A.x, A.y, clamp(0.09 * A.s, 1.2, 4.5) * (1 + m.sz), a);
+  }
+  gb.flush(ctx);
+  segs.forEach((sg, k) => strokeSegs(ctx, sg, LITE[k], 1.2, 0.3 * vis * (0.5 + 0.5 * c)));
+};
+
 const drawStreams = (ctx: CanvasRenderingContext2D, f: number, cam: Cam) => {
-  const F = frontAt(f);
-  const out = 1 - prog(f, IMPACT, IMPACT + 4);
+  const out = 1 - prog(f, IMPACT, IMPACT + 3);
   if (out <= 0) return;
   const flow = flowAt(f);
   const c = chargeAt(f);
-  ctx.globalCompositeOperation = "lighter";
-  // emitters (portals) at the sources
+  const inh = inhaleAt(f);
+  const dim = out * (1 - 0.7 * inh);
+  const cut = cutAt(f);
+  const mt = f - MEET;
+  // emitters: portals on the floor at the sources (spent soon after the meeting)
   ARMS.forEach((a, k) => {
-    const ign = ease.outCubic(prog(f, 22 + k * 7, 56 + k * 7)) * out;
+    const ign = ease.outCubic(prog(f, a.ign, a.ign + 26)) * (1 - prog(f, MEET + 4, MEET + 34)) * out;
     if (ign <= 0) return;
-    const sp = armPos(k, 0);
+    const sp = groundOf(k, 0);
     const S = P(cam, sp);
     if (!S) return;
     const k2 = S.s / 45;
     const flick = 0.85 + 0.15 * noise1(f * 0.3 + k * 9);
-    glow(ctx, S.x, S.y, 150 * k2 * ign, a.col, 0.35 * ign * flick, 0.05);
-    glow(ctx, S.x, S.y, 34 * k2, "#ffffff", 0.9 * ign);
-    // light pillar
-    const top = P(cam, [sp[0], sp[1] - 6, sp[2]]);
-    if (top) {
+    glow(ctx, S.x, S.y, Math.min(150, 130 * k2) * ign, a.col, 0.3 * ign * flick, 0.05);
+    glow(ctx, S.x, S.y, Math.min(40, 32 * k2), WHITE, 0.9 * ign);
+    // ignition beacon: a pillar of light that shoots up and dissipates before the labels arrive
+    const top = P(cam, [sp[0], -7, sp[2]]);
+    const pil = ign * (1 - prog(f, a.ign + 18, a.ign + 36));
+    if (top && pil > 0) {
       const g = ctx.createLinearGradient(S.x, S.y, top.x, top.y);
-      g.addColorStop(0, withAlpha(a.col, 0.5 * ign));
+      g.addColorStop(0, withAlpha(a.col, 0.6 * pil));
       g.addColorStop(1, withAlpha(a.col, 0));
       ctx.strokeStyle = g;
-      ctx.lineWidth = 10 * k2;
+      ctx.lineWidth = 12 * k2;
       ctx.beginPath();
       ctx.moveTo(S.x, S.y);
       ctx.lineTo(top.x, top.y);
@@ -548,217 +823,313 @@ const drawStreams = (ctx: CanvasRenderingContext2D, f: number, cam: Cam) => {
       ctx.lineWidth = 2.5 * k2;
       ctx.stroke();
     }
-    // two rings lying on the disk
+    // two rotating dashed rings lying on the floor
     for (const [rr, spd] of [
-      [1.3, 0.05],
-      [2.1, -0.03],
+      [1.5, 0.05],
+      [2.5, -0.03],
     ]) {
       const pts: Pt[] = [];
-      for (let i = 0; i <= 60; i++) {
-        const an = (i / 60) * TAU;
-        const q = P(cam, [sp[0] + Math.cos(an) * rr, sp[1], sp[2] + Math.sin(an) * rr]);
+      for (let i = 0; i <= 64; i++) {
+        const an = (i / 64) * TAU;
+        const q = P(cam, [sp[0] + Math.cos(an) * rr, 0, sp[2] + Math.sin(an) * rr]);
         if (q) pts.push(q);
       }
       ctx.setLineDash([14 * k2, 10 * k2]);
       ctx.lineDashOffset = f * spd * 60;
-      ctx.strokeStyle = withAlpha(a.col, 0.6 * ign);
-      ctx.lineWidth = 2 * k2;
+      ctx.strokeStyle = withAlpha(a.col, 0.65 * ign);
+      ctx.lineWidth = 2.2 * k2;
       polyline(ctx, pts);
       ctx.stroke();
       ctx.setLineDash([]);
     }
   });
-  if (F <= 0) {
-    ctx.globalCompositeOperation = "source-over";
-    return;
-  }
-  const nAct = Math.floor(N_PART * (0.35 + 0.65 * prog(f, STREAMS, IMPACT)));
-  const tl = 0.012 + 0.03 * c;
+  const nAct = Math.floor(N_PART * (0.4 + 0.6 * prog(f, STREAMS, IMPACT - 20)));
+  const trailU = 0.035 + 0.035 * c + 0.06 * inh;
   ARMS.forEach((a, k) => {
+    const F = frontAt(f, k);
+    const col = a.col;
+    // guide: a faint dashed forecast of the whole curve, traced ahead of the stream's head
+    const gs = Math.max(a.ign + 4, STREAMS + 4);
+    const G = ease.inOutCubic(prog(f, gs, gs + 30));
+    if (G > F + 0.01) {
+      const gp: Pt[] = [];
+      for (let s = F; s <= G + 1e-6; s += 0.012) {
+        const q = P(cam, armPos(k, Math.min(s, G)));
+        if (q) gp.push(q);
+      }
+      ctx.setLineDash([9, 9]);
+      ctx.lineDashOffset = -f * 1.6;
+      ctx.strokeStyle = withAlpha(LITE[k], 0.42 * dim);
+      ctx.lineWidth = 1.6;
+      polyline(ctx, gp);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      const end = gp[gp.length - 1];
+      if (end && G < 0.995) glow(ctx, end.x, end.y, 9, col, 0.8 * dim);
+    }
+    if (F <= 0.001) return;
+    const s0c = Math.min(cut, F);
+    // curtain: the area under the curve, like a chart, plus its shadow on the floor
+    const cur: Seg = [];
+    const curTop: Seg = [];
+    const shadow: Pt[] = [];
+    for (let j = 0; j <= 70; j++) {
+      const s = s0c + ((F - s0c) * j) / 70;
+      if (s > 0.985) break;
+      const tp = P(cam, armPos(k, s));
+      const bt = P(cam, groundOf(k, s));
+      if (!tp || !bt) continue;
+      cur.push(tp.x, tp.y, bt.x, bt.y);
+      curTop.push(tp.x, tp.y, lerp(tp.x, bt.x, 0.3), lerp(tp.y, bt.y, 0.3));
+      shadow.push(bt);
+    }
+    strokeSegs(ctx, cur, col, 1.2, 0.06 * dim);
+    strokeSegs(ctx, curTop, col, 1.6, 0.09 * dim);
+    if (shadow.length > 1) {
+      ctx.strokeStyle = withAlpha(col, 0.3 * dim);
+      ctx.lineWidth = 1.5;
+      polyline(ctx, shadow);
+      ctx.stroke();
+    }
     // volume haze along the stream
-    for (let j = 0; j < 40; j++) {
-      const s = (F * (j + 0.5)) / 40;
+    for (let j = 0; j < 12; j++) {
+      const s = s0c + ((F - s0c) * (j + 0.5)) / 12;
       const q = P(cam, armPos(k, s));
       if (!q) continue;
-      glow(ctx, q.x, q.y, 1.5 * STREAM_W * Math.pow(1 - s, 0.85) * q.s + 18, a.col, 0.07 * out, 0.02);
+      glow(ctx, q.x, q.y, Math.min(120, 1.5 * (a.wid * Math.pow(1 - s, 0.7) + 0.1) * q.s + 20), col, (0.09 + 0.07 * s + 0.08 * c) * dim, 0.02);
     }
-    // the curve itself
+    // the curve itself, brighter toward O (exponential glow); it thickens as the charge builds
     const pts: Pt[] = [];
-    for (let s = 0; s <= F + 1e-6; s += 0.01) {
+    for (let s = s0c; s <= F + 1e-6; s += 0.008) {
       const q = P(cam, armPos(k, Math.min(s, F)));
       if (q) pts.push(q);
     }
     const hq = P(cam, armPos(k, F));
     if (hq) pts.push(hq);
-    glowLine(ctx, pts, a.col, 2.2 + 1.5 * c, (0.55 + 0.45 * c) * out);
-    // particles
-    const buckets: Seg[] = [[], [], []];
+    const n = pts.length;
+    for (let j = 0; j < 4; j++) {
+      const sub = pts.slice(Math.floor((n * j) / 4), Math.min(n, Math.floor((n * (j + 1)) / 4) + 1));
+      glowLine(ctx, sub, col, 1.7 + 0.8 * j + 3 * c, (0.34 + 0.22 * j + 0.35 * c) * dim);
+    }
+    // the meeting: a bright pulse runs back down each curve
+    if (mt >= 0 && mt < 26) {
+      const sp = 1 - ease.outQuad(mt / 24);
+      const seg: Pt[] = [];
+      for (let q = 0; q <= 12; q++) {
+        const s = clamp(sp - 0.08 + (0.16 * q) / 12, s0c, 1);
+        const pp = P(cam, armPos(k, s));
+        if (pp) seg.push(pp);
+      }
+      glowLine(ctx, seg, mix(col, WHITE, 0.5), 9, (1 - mt / 26) * dim);
+      const hd = P(cam, armPos(k, Math.max(sp, s0c)));
+      if (hd) {
+        glow(ctx, hd.x, hd.y, 120, col, 0.9 * (1 - mt / 26) * dim);
+        glow(ctx, hd.x, hd.y, 30, WHITE, (1 - mt / 26) * dim);
+      }
+    }
+    // particles: long motion trails, bright heads
+    const buckets: Seg[] = [[], [], [], [], [], []];
+    const gb = new GlowBatch();
     const L = PARTS[k];
     for (let i = 0; i < nAct; i++) {
       const p = L[i];
       const u = frac(p.a + flow * p.sp);
-      const s = F * u;
-      if (s < 0.004 || s > 0.995) continue;
+      const s = F * Math.pow(u, 1.3);
+      if (s < 0.003 || s > 0.985 || s < cut + 0.05 * p.sz) continue;
+      const s0 = F * Math.pow(Math.max(0, u - trailU * p.tl), 1.3);
       const A = P(cam, armPos(k, s, p.o1, p.o2));
-      const B = P(cam, armPos(k, Math.max(0, s - tl * p.sp), p.o1 * 1.02, p.o2 * 1.02));
+      const B = P(cam, armPos(k, s0, p.o1, p.o2));
       if (!A || !B) continue;
-      buckets[p.b].push(B.x, B.y, A.x, A.y);
+      const band = s < 0.4 ? 0 : s < 0.75 ? 1 : 2;
+      buckets[band * 2 + p.b].push(B.x, B.y, A.x, A.y);
       if (i % 3 === 0) {
-        const edge = clamp(s / 0.04) * clamp((1 - s) / 0.05);
-        glow(ctx, A.x, A.y, (2 + 5 * p.sz) * (A.s / 45), i % 9 === 0 ? "#ffffff" : a.col, 0.55 * p.br * edge * out);
+        const edge = clamp(s / 0.03) * clamp((F - s) / 0.02 + 0.3);
+        gb.add(p.b ? WHITE : col, A.x, A.y, Math.min(14, (1.6 + 4.2 * p.sz) * (A.s / 42) * (0.8 + 0.5 * s)), (0.3 + 0.5 * s) * edge * dim);
       }
     }
-    strokeSegs(ctx, buckets[0], a.col, 1.2, 0.22 * out);
-    strokeSegs(ctx, buckets[1], a.col, 1.8, 0.38 * out);
-    strokeSegs(ctx, buckets[2], mix(a.col, "#ffffff", 0.4), 2.4, 0.6 * out);
-    // glyph sprites
+    gb.flush(ctx);
+    for (let band = 0; band < 3; band++) {
+      const wA = [1.1, 1.5, 2.1][band] * (1 + 0.5 * c);
+      const aA = [0.2, 0.3, 0.42][band] * (1 + 0.5 * c);
+      strokeSegs(ctx, buckets[band * 2], col, wA * 2.6, aA * 0.25 * dim);
+      strokeSegs(ctx, buckets[band * 2], col, wA, aA * dim);
+      strokeSegs(ctx, buckets[band * 2 + 1], LITE[k], wA * 1.2, Math.min(1, aA * 1.8) * dim);
+    }
+    // glyph sprites riding the stream
     for (const sp of SPRS[k]) {
-      const u = frac(sp.a + flow * 0.45 * sp.sp);
+      const u = frac(sp.a + flow * 0.42 * sp.sp);
       const s = F * u;
+      const fade = clamp((s - 0.02) / 0.05) * clamp((0.74 - s) / 0.14) * clamp((s - cut) / 0.05) * dim;
+      if (fade <= 0.01) continue;
       const q = P(cam, armPos(k, s, sp.o1, sp.o2));
       if (!q) continue;
-      const fade = clamp((s - 0.02) / 0.05) * clamp((0.72 - s) / 0.15) * out;
-      if (fade <= 0.01) continue;
-      const size = clamp(0.8 * q.s, 16, 50);
+      const size = clamp(0.62 * q.s, 15, 40);
       ctx.save();
       ctx.globalAlpha = 0.95 * fade;
       ctx.translate(q.x, q.y);
-      ctx.rotate(sp.rot);
-      glow(ctx, 0, 0, size * 0.9, a.col, 0.35);
-      ctx.drawImage(sprite(a.kinds[sp.kind], a.col), -size / 2, -size / 2, size, size);
+      ctx.rotate(sp.rot + 0.02 * f * (sp.v - 1));
+      glow(ctx, 0, 0, size * 0.95, col, 0.35);
+      ctx.drawImage(sprite(sp.kind, col, sp.v), -size / 2, -size / 2, size, size);
       ctx.restore();
     }
     // packets: bright comets racing along the curve
-    const pf = flowAt(f) * 1.6;
-    for (let j = 0; j < 5; j++) {
-      const u = frac(j / 5 + pf + k * 0.13);
-      const s = F * u;
+    const pf = flow * 1.7;
+    for (let j = 0; j < 6; j++) {
+      const u = frac(j / 6 + pf + k * 0.13);
+      const s = F * Math.pow(u, 1.2);
+      if (s < cut) continue;
       const seg: Pt[] = [];
       for (let q = 0; q <= 8; q++) {
-        const pp = P(cam, armPos(k, Math.max(0, s - 0.07 * (1 - q / 8))));
+        const pp = P(cam, armPos(k, Math.max(cut, s - 0.08 * (1 - q / 8))));
         if (pp) seg.push(pp);
       }
       const fade = clamp(s / 0.06) * clamp((1 - s) / 0.04);
-      glowLine(ctx, seg, a.col, 3, 0.8 * fade * out);
+      glowLine(ctx, seg, col, 3, 0.8 * fade * dim);
       const hd = seg[seg.length - 1];
-      if (hd) glow(ctx, hd.x, hd.y, 22, "#ffffff", 0.7 * fade * out);
+      if (hd) glow(ctx, hd.x, hd.y, 22, WHITE, 0.75 * fade * dim);
     }
-    // head of the stream (comet)
+    // the head of the stream (a comet: a point with a cross flare, not a blob)
     if (F < 1 && hq) {
       const tail: Pt[] = [];
-      for (let q = 0; q <= 14; q++) {
-        const pp = P(cam, armPos(k, Math.max(0, F - 0.16 * (1 - q / 14))));
+      for (let q = 0; q <= 16; q++) {
+        const pp = P(cam, armPos(k, Math.max(0, F - 0.2 * (1 - q / 16))));
         if (pp) tail.push(pp);
       }
-      glowLine(ctx, tail, a.col, 6, 0.9);
-      glow(ctx, hq.x, hq.y, 120 * (hq.s / 45), a.col, 0.75);
-      glow(ctx, hq.x, hq.y, 36 * (hq.s / 45), "#ffffff", 1);
+      const k2 = Math.min(1.4, hq.s / 45);
+      glowLine(ctx, tail, col, 5.5, 0.95 * dim);
+      glow(ctx, hq.x, hq.y, 100 * k2, col, 0.5 * dim);
+      glow(ctx, hq.x, hq.y, 26 * k2, WHITE, dim);
+      ctx.strokeStyle = withAlpha(WHITE, 0.55 * dim);
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      const L2 = 64 * k2;
+      ctx.moveTo(hq.x - L2, hq.y);
+      ctx.lineTo(hq.x + L2, hq.y);
+      ctx.moveTo(hq.x, hq.y - L2 * 0.6);
+      ctx.lineTo(hq.x, hq.y + L2 * 0.6);
+      ctx.stroke();
     }
   });
-  ctx.globalCompositeOperation = "source-over";
 };
 
-/** The gathering core between MEET and IMPACT. */
-const drawCore = (ctx: CanvasRenderingContext2D, w: number, f: number, cam: Cam, O: Pt) => {
+/** The gathering core between the first glimmer and the blast. */
+const drawCore = (ctx: CanvasRenderingContext2D, w: number, f: number, cam: Cam, O: Pt & { s: number }) => {
   if (f >= IMPACT) return;
-  const pre = ease.inQuad(prog(f, STREAMS, MEET));
+  const pre = ease.inQuad(prog(f, STREAMS + 26, MEET));
   const c = chargeAt(f);
   const inh = inhaleAt(f);
   const pu = pulseAt(f);
   const mt = f - MEET;
   const meet = mt >= 0 ? Math.exp(-mt / 9) : 0;
-  ctx.globalCompositeOperation = "lighter";
-  // accretion vortex
-  if (c > 0) {
-    const n = Math.floor(N_ACC * clamp(c * 1.3));
-    const ph = Math.max(0, f - MEET + 10);
-    const phase = ph + (1.4 * ph * ph) / (IMPACT - MEET);
-    const shrink = 1 - 0.85 * inh;
-    const segs: Seg[] = [[], [], []];
+  const k = O.s / 45;
+  // accretion disc: three spiral arms (one per stream) winding into the core, spinning ever faster
+  const grow = ease.outCubic(prog(f, MEET - 6, MEET + 34));
+  if (grow > 0) {
+    const R = ACC_RMAX * grow * (1 - 0.85 * inh);
+    const n = Math.floor(N_ACC * clamp(grow * (0.45 + 0.8 * c)));
+    const spin = accSpin(f);
+    const fl = accFlow(f);
+    const du = 0.035 + 0.05 * c + 0.05 * inh;
+    const rOf = (u: number) => 0.035 + 0.965 * Math.pow(1 - u, 1.5);
+    const angOf = (p: (typeof ACC)[number], rho: number, sp: number) =>
+      (p.arm * TAU) / 3 + sp + ACC_WIND * Math.log(1 / rho) + p.jit * (0.3 + 0.7 * rho);
+    const segs: Seg[] = [[], [], [], [], [], []];
+    const da = 0.04 + 0.06 * c;
+    const gb = new GlowBatch();
     for (let i = 0; i < n; i++) {
       const p = ACC[i];
-      const r = p.r * shrink * (0.9 + 0.1 * c);
-      const an = p.a + (phase * 0.045) / Math.pow(p.r, 0.8);
-      const an0 = an - 0.12 / Math.pow(p.r, 0.6);
-      const A = P(cam, [Math.cos(an) * r, p.y * r, Math.sin(an) * r]);
-      const B = P(cam, [Math.cos(an0) * r, p.y * r, Math.sin(an0) * r]);
+      const u = frac(p.u + fl * p.sp);
+      const rho = rOf(u);
+      const rho0 = rOf(Math.max(0, u - du));
+      const A = P(cam, accPos(rho * R, angOf(p, rho, spin), p.y * rho));
+      const B = P(cam, accPos(rho0 * R, angOf(p, rho0, spin - da), p.y * rho0));
       if (!A || !B) continue;
-      segs[p.col].push(B.x, B.y, A.x, A.y);
-      if (i % 4 === 0) glow(ctx, A.x, A.y, 3 + 4 * p.br, i % 8 === 0 ? "#ffffff" : ARMS[p.col].col, 0.6 * c);
+      const inner = rho < 0.35 ? 1 : 0;
+      segs[p.arm * 2 + inner].push(B.x, B.y, A.x, A.y);
+      if (i % 3 === 0) {
+        const fade = clamp(u / 0.1);
+        gb.add(rho < 0.22 ? WHITE : ARMS[p.arm].col, A.x, A.y, (2.5 + 5 * p.br) * Math.max(0.8, k), (0.45 + 0.4 * c) * fade * grow);
+      }
     }
-    segs.forEach((sg, j) => strokeSegs(ctx, sg, mix(ARMS[j].col, "#ffffff", 0.3), 1.6, 0.45 * c));
+    gb.flush(ctx);
+    for (let j = 0; j < 3; j++) {
+      strokeSegs(ctx, segs[j * 2], ARMS[j].col, 4, (0.12 + 0.12 * c) * grow);
+      strokeSegs(ctx, segs[j * 2], LITE[j], 1.6, (0.45 + 0.35 * c) * grow);
+      strokeSegs(ctx, segs[j * 2 + 1], mix(ARMS[j].col, WHITE, 0.8), 2, (0.6 + 0.35 * c) * grow);
+    }
+    // bright spines along the three spiral arms
+    for (let j = 0; j < 3; j++) {
+      const spine: Pt[] = [];
+      for (let q = 0; q <= 40; q++) {
+        const rho = 1 - (0.96 * q) / 40;
+        const an = (j * TAU) / 3 + spin + ACC_WIND * Math.log(1 / rho);
+        const pp = P(cam, accPos(rho * R, an, 0));
+        if (pp) spine.push(pp);
+      }
+      glowLine(ctx, spine.slice(8), ARMS[j].col, 2.2 + 1.5 * c, (0.35 + 0.35 * c) * grow);
+      glowLine(ctx, spine.slice(0, 9), ARMS[j].col, 1.6, 0.18 * grow);
+    }
+    // the disc's own soft body
+    glow(ctx, O.x, O.y, R * O.s * 1.05, mix(C.magenta, C.gold, 0.4), 0.16 * grow * (1 - inh), 0.02);
   }
-  // inward light streaks
+  // light streaks being sucked in from all around
   if (c > 0.02) {
     const sg: Seg = [];
-    const n = Math.floor(40 + 160 * c);
-    const spd = 0.012 + 0.05 * c + 0.08 * inh;
+    const n = Math.floor(50 + 220 * c);
+    const spd = 0.012 + 0.05 * c + 0.1 * inh;
     for (let i = 0; i < n; i++) {
       const an = hash(i * 3.7) * TAU;
       const u = frac(hash(i * 1.3) + (f - MEET) * spd * (0.6 + 0.8 * hash(i * 5.1)));
-      const rad = 60 + 700 * Math.pow(1 - u, 1.6);
-      const len = 30 + 120 * c * (1 - u);
-      sg.push(O.x + Math.cos(an) * rad, O.y + Math.sin(an) * rad, O.x + Math.cos(an) * (rad + len), O.y + Math.sin(an) * (rad + len));
+      const rmax = 1100;
+      const rad = 70 + (rmax - 70) * Math.pow(1 - u, 1.6);
+      const len = 30 + 160 * c * (1 - u);
+      const r2 = Math.min(rad + len, rmax);
+      sg.push(O.x + Math.cos(an) * rad, O.y + Math.sin(an) * rad, O.x + Math.cos(an) * r2, O.y + Math.sin(an) * r2);
     }
-    strokeSegs(ctx, sg, "#dfe8ff", 1.5, 0.35 * c);
+    strokeSegs(ctx, sg, "#e4ecff", 1.5, 0.3 * c + 0.2 * inh);
   }
-  // the moment the three heads meet: a small ring flies out
-  if (mt >= 0 && mt < 30) {
-    const r = 30 + 26 * mt * Math.exp(-mt / 25);
-    const a = Math.exp(-mt / 9);
-    ([
-      [C.cyan, 0.97],
-      ["#ffffff", 1],
-      [C.magenta, 1.03],
-    ] as const).forEach(([col, k]) => {
-      ctx.strokeStyle = withAlpha(col, 0.7 * a);
-      ctx.lineWidth = 2 + 5 * a;
-      ctx.beginPath();
-      ctx.ellipse(O.x, O.y, r * k, r * k * 0.72, 0, 0, TAU);
-      ctx.stroke();
-    });
+  // the three heads meet: a bloom and three staggered chromatic rings fly out
+  if (mt >= 0 && mt < 44) {
+    glow(ctx, O.x, O.y, 260 * Math.max(0.8, k), mix(C.gold, WHITE, 0.45), 0.85 * Math.exp(-mt / 7), 0.06);
+    for (let j = 0; j < 3; j++) {
+      const tt = mt - j * 4;
+      if (tt < 0) continue;
+      const r = (50 + (380 + 120 * j) * ease.outCubic(clamp(tt / 32))) * Math.max(0.8, k);
+      chromaRing(ctx, O.x, O.y, r, r * 0.66, 0.85 * Math.exp(-tt / 10), 2 + 6 * Math.exp(-tt / 7), [WHITE, C.gold, WHITE][j]);
+    }
   }
-  // inward-collapsing rings on each heartbeat pulse
+  // heartbeat: inward-collapsing rings
   for (const p of PULSES) {
     const t = f - p;
     if (t < 0 || t > 14) continue;
-    const r = 420 * Math.pow(1 - t / 14, 1.5) + 10;
+    const r = 460 * Math.pow(1 - t / 14, 1.5) + 12;
     const a = Math.sin((t / 14) * Math.PI);
-    ctx.strokeStyle = withAlpha("#ffffff", 0.5 * a);
+    ctx.strokeStyle = withAlpha(WHITE, 0.5 * a);
     ctx.lineWidth = 2 + 4 * a;
     ctx.beginPath();
-    ctx.ellipse(O.x, O.y, r, r * 0.8, 0, 0, TAU);
+    ctx.ellipse(O.x, O.y, r, r * 0.7, 0, 0, TAU);
     ctx.stroke();
   }
   // the core
-  const coreR = (40 + 120 * pre + 240 * c + 110 * pu + 160 * meet) * (1 - 0.7 * inh);
-  glow(ctx, O.x, O.y, coreR * 2.2, mix(C.gold, C.magenta, 0.3), 0.22 + 0.28 * c, 0.03);
-  glow(ctx, O.x, O.y, coreR, "#ffffff", 0.35 + 0.45 * c + 0.3 * meet, 0.08);
-  glow(ctx, O.x, O.y, 18 + 30 * c + 40 * inh, "#ffffff", 1);
+  const coreR = (36 + 90 * pre + 190 * c + 110 * pu + 120 * meet) * (1 - 0.75 * inh) * Math.max(0.7, k);
+  glow(ctx, O.x, O.y, coreR * 2.3, mix(C.gold, C.magenta, 0.3), (0.2 + 0.28 * c) * (1 - 0.5 * inh), 0.03);
+  glow(ctx, O.x, O.y, coreR, WHITE, 0.3 + 0.4 * c + 0.3 * meet, 0.08);
+  glow(ctx, O.x, O.y, 16 + 30 * c + 26 * inh, WHITE, 1);
   // lens ring with chromatic edges
-  const ringA = 0.08 + 0.35 * c + 0.3 * meet;
-  const rr = (130 + 90 * c + 30 * pu) * (1 - 0.55 * inh);
-  ([
-    [C.cyan, 0.97],
-    ["#ffffff", 1],
-    [C.magenta, 1.03],
-  ] as const).forEach(([col, k]) => {
-    ctx.strokeStyle = withAlpha(col, ringA * 0.6);
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(O.x, O.y, rr * k, 0, TAU);
-    ctx.stroke();
-  });
+  const ringA = (0.06 * prog(f, STREAMS + 14, STREAMS + 40) + 0.4 * c + 0.3 * meet) * (1 - 0.6 * inh);
+  const rr = (120 + 110 * c + 34 * pu) * (1 - 0.55 * inh);
+  chromaRing(ctx, O.x, O.y, rr, rr, ringA * 0.6, 2);
+  chromaRing(ctx, O.x, O.y, rr * 1.9, rr * 1.9, ringA * 0.18, 1.5);
   // star spikes + anamorphic streak
-  const sk = 0.15 + 0.6 * c + 0.4 * meet + 0.6 * inh;
+  const sk = 0.15 * prog(f, STREAMS + 6, STREAMS + 34) + 0.55 * c + 0.4 * meet + 0.5 * inh;
   ctx.save();
   ctx.translate(O.x, O.y);
   ctx.rotate(f * 0.004);
   for (let i = 0; i < 6; i++) {
     const an = (i / 6) * TAU;
-    const len = (220 + 600 * c) * (1 + inh);
+    const len = (200 + 620 * c) * (1 + 1.2 * inh);
     const g = ctx.createLinearGradient(0, 0, Math.cos(an) * len, Math.sin(an) * len);
-    g.addColorStop(0, withAlpha("#ffffff", 0.5 * sk));
+    g.addColorStop(0, withAlpha(WHITE, 0.5 * sk));
     g.addColorStop(1, "rgba(255,255,255,0)");
     ctx.strokeStyle = g;
     ctx.lineWidth = 2 + 2 * c;
@@ -770,45 +1141,29 @@ const drawCore = (ctx: CanvasRenderingContext2D, w: number, f: number, cam: Cam,
   ctx.restore();
   const g = ctx.createLinearGradient(0, 0, w, 0);
   g.addColorStop(0, "rgba(120,200,255,0)");
-  g.addColorStop(0.5, withAlpha("#ffffff", 0.55 * sk));
+  g.addColorStop(0.5, withAlpha(WHITE, 0.5 * sk));
   g.addColorStop(1, "rgba(120,200,255,0)");
   ctx.fillStyle = g;
-  const sw = 2 + 6 * c + 6 * inh;
+  const sw = 2 + 6 * c + 4 * inh;
   ctx.fillRect(0, O.y - sw / 2, w, sw);
-  ctx.globalCompositeOperation = "source-over";
 };
 
-const ringPoint = (rx: number, rz: number, a: number, r: number): P3 => {
-  // circle in the XZ plane, tilted about X then about Z
-  const x = Math.cos(a) * r;
-  let y = 0;
-  let z = Math.sin(a) * r;
-  const y1 = y * Math.cos(rx) - z * Math.sin(rx);
-  const z1 = y * Math.sin(rx) + z * Math.cos(rx);
-  y = y1;
-  z = z1;
-  const x2 = x * Math.cos(rz) - y * Math.sin(rz);
-  const y2 = x * Math.sin(rz) + y * Math.cos(rz);
-  return [x2, y2, z];
-};
-
-const drawBlast = (ctx: CanvasRenderingContext2D, w: number, f: number, cam: Cam, O: Pt & { s: number }) => {
+const drawRays = (ctx: CanvasRenderingContext2D, f: number, O: Pt) => {
   const t = f - IMPACT;
   if (t < 0) return;
-  ctx.globalCompositeOperation = "lighter";
-  // god rays
+  const rayA = 0.17 * Math.exp(-t / 22) * (1 - prog(t, 40, 64));
+  if (rayA <= 0.004) return;
   ctx.save();
   ctx.translate(O.x, O.y);
   ctx.rotate(t * 0.0025);
-  const rayA = 0.15 * Math.exp(-t / 30) + 0.035;
-  const shoot = ease.outCubic(clamp((t + 1) / 12));
-  for (let i = 0; i < 72; i++) {
-    const a = (i / 72) * TAU + hash(i) * 0.08;
-    const len = 1600 * shoot * (0.7 + 0.3 * hash(i * 2.7));
-    const wid = 0.006 + hash(i * 9) * 0.022;
+  const shoot = ease.outCubic(clamp((t + 1) / 10));
+  for (let i = 0; i < 48; i++) {
+    const a = (i / 48) * TAU + hash(i) * 0.09;
+    const len = 1700 * shoot * (0.65 + 0.35 * hash(i * 2.7));
+    const wid = 0.005 + hash(i * 9) * 0.02;
+    const col = HUE_COLS[i % 3];
     const g = ctx.createLinearGradient(0, 0, Math.cos(a) * len, Math.sin(a) * len);
-    const col = i % 3 === 0 ? C.cyan : i % 3 === 1 ? C.magenta : C.gold;
-    g.addColorStop(0, withAlpha(mix(col, "#ffffff", 0.4), rayA * (0.6 + 0.8 * hash(i * 4.4))));
+    g.addColorStop(0, withAlpha(mix(col, WHITE, 0.4), rayA * (0.6 + 0.8 * hash(i * 4.4))));
     g.addColorStop(1, withAlpha(col, 0));
     ctx.fillStyle = g;
     ctx.beginPath();
@@ -818,44 +1173,51 @@ const drawBlast = (ctx: CanvasRenderingContext2D, w: number, f: number, cam: Cam
     ctx.fill();
   }
   ctx.restore();
-  // expanding bubble (sphere silhouette)
-  const rb = 26 * (1 - Math.exp(-t / 12)) * O.s;
-  const ba = 0.5 * Math.exp(-t / 16);
+};
+
+const drawBlast = (ctx: CanvasRenderingContext2D, w: number, f: number, cam: Cam, O: Pt & { s: number }) => {
+  const t = f - IMPACT;
+  if (t < 0 || t > 110) return;
+  // expanding shock bubble (sphere silhouette with a chromatic rim), drawn as soft strokes
+  const rb = 30 * (1 - Math.exp(-t / 11)) * O.s;
+  const ba = 0.55 * Math.exp(-t / 13);
   if (ba > 0.01 && rb > 4) {
     ([
       [C.cyan, 0.965],
-      ["#ffffff", 1],
+      [WHITE, 1],
       [C.magenta, 1.035],
     ] as const).forEach(([col, k]) => {
       const r = rb * k;
-      const g = ctx.createRadialGradient(O.x, O.y, r * 0.8, O.x, O.y, r);
-      g.addColorStop(0, withAlpha(col, 0));
-      g.addColorStop(0.85, withAlpha(col, ba * 0.35));
-      g.addColorStop(1, withAlpha(col, 0));
-      ctx.fillStyle = g;
+      ctx.strokeStyle = withAlpha(col, ba * 0.12);
+      ctx.lineWidth = r * 0.16;
       ctx.beginPath();
-      ctx.arc(O.x, O.y, r, 0, TAU);
-      ctx.fill();
+      ctx.arc(O.x, O.y, r * 0.9, 0, TAU);
+      ctx.stroke();
+      ctx.strokeStyle = withAlpha(col, ba * 0.3);
+      ctx.lineWidth = r * 0.05;
+      ctx.beginPath();
+      ctx.arc(O.x, O.y, r * 0.96, 0, TAU);
+      ctx.stroke();
     });
   }
-  // shockwave rings (3D, chromatic)
+  // shockwave rings (3D, chromatic); short tails so they are gone before the network settles
   for (const R of RINGS) {
     const tt = t - R.delay;
     if (tt < 0) continue;
     const rad = R.v * (1 - Math.exp(-tt / R.tau));
-    const a = Math.exp(-tt / (R.tau * 0.9));
-    if (a < 0.01) continue;
+    const a = Math.exp(-tt / (R.tau * 0.6));
+    if (a < 0.02) continue;
     ([
       [C.cyan, 0.975],
       [R.col, 1],
       [C.magenta, 1.025],
     ] as const).forEach(([col, k], j) => {
       const pts: Pt[] = [];
-      for (let i = 0; i <= 90; i++) {
-        const q = P(cam, ringPoint(R.rx, R.rz, (i / 90) * TAU, rad * k));
+      for (let i = 0; i <= 96; i++) {
+        const q = P(cam, ringPoint(R.rx, R.rz, (i / 96) * TAU, rad * k));
         if (q) pts.push(q);
       }
-      if (j === 1) glowLine(ctx, pts, col, 2 + 5 * a, a);
+      if (j === 1) glowLine(ctx, pts, col, 2 + 6 * a, a);
       else {
         ctx.strokeStyle = withAlpha(col, 0.5 * a);
         ctx.lineWidth = 2 + 3 * a;
@@ -864,180 +1226,285 @@ const drawBlast = (ctx: CanvasRenderingContext2D, w: number, f: number, cam: Cam
       }
     });
   }
-  // sparks (3D, motion-blurred)
+  // sparks (3D, motion-blurred); the ones right on top of the core are held back for the first frames
+  // so the ring and spark structure reads instead of a flat white disc
   const buckets: Seg[] = Array.from({ length: 12 }, () => []);
+  const hold = t < 14 ? 1 - t / 14 : 0;
+  const gb = new GlowBatch();
   for (let i = 0; i < N_SPARK; i++) {
     const s = SPARKS[i];
-    const life = Math.exp(-t / s.life);
+    let life = Math.exp(-t / s.life) * (1 - prog(t, 40, 75));
     if (life < 0.03) continue;
-    const A = P(cam, sparkAt(s, t));
-    const B = P(cam, sparkAt(s, t - 2.2));
-    if (!A || !B || A.z < 1.2) continue;
+    const A = P(cam, sparkAt(s, t), 1.2);
+    const B = P(cam, sparkAt(s, t - 2.4), 1.2);
+    if (!A || !B) continue;
+    // early on only the fast sparks show, so the burst reads as a hollow shell of streaks
+    if (hold > 0) life *= lerp(1, clamp((s.v - 0.6) / 0.9) * Math.pow(clamp(Math.hypot(A.x - O.x, A.y - O.y) / 200), 1.2), hold);
+    if (life < 0.03) continue;
     let dx = A.x - B.x;
     let dy = A.y - B.y;
     const L = Math.hypot(dx, dy);
-    if (L > 260) {
-      dx *= 260 / L;
-      dy *= 260 / L;
+    if (L > 280) {
+      dx *= 280 / L;
+      dy *= 280 / L;
     }
     const lv = life > 0.6 ? 2 : life > 0.25 ? 1 : 0;
     buckets[s.col * 3 + lv].push(A.x - dx, A.y - dy, A.x, A.y);
-    if (i % 3 === 0) glow(ctx, A.x, A.y, Math.min(30, (2 + 5 * s.sz) * (A.s / 40) * (0.5 + life)), SPARK_COLS[s.col], life);
+    if (i % 3 === 0) gb.add(SPARK_COLS[s.col], A.x, A.y, Math.min(26, (2 + 5 * s.sz) * (A.s / 40) * (0.5 + life)), life * (0.5 + 0.5 * clamp(t / 12)));
   }
+  gb.flush(ctx);
+  // the first frames are the densest: keep the streaks translucent so they never pile up into flat white
+  const dens = lerp(0.38, 1, ease.inQuad(clamp(t / 16)));
   buckets.forEach((sg, j) => {
     const col = SPARK_COLS[Math.floor(j / 3)];
     const lv = j % 3;
-    strokeSegs(ctx, sg, col, 4, [0.06, 0.12, 0.2][lv]);
-    strokeSegs(ctx, sg, mix(col, "#ffffff", 0.5), 1.6, [0.25, 0.5, 0.95][lv]);
+    strokeSegs(ctx, sg, col, 4.5, [0.06, 0.12, 0.2][lv] * dens);
+    strokeSegs(ctx, sg, mix(col, WHITE, 0.5), 1.7, [0.25, 0.5, 0.95][lv] * dens);
   });
-  // blast core + anamorphic flare
-  const k1 = Math.exp(-t / 7);
-  glow(ctx, O.x, O.y, 800 * k1 + 200, mix(C.gold, "#ffffff", 0.4), 0.6 * k1 + 0.14, 0.04);
-  glow(ctx, O.x, O.y, 240 * k1 + 60, "#ffffff", 0.9, 0.1);
+  // flung glyphs
+  for (const d of DEBRIS) {
+    const life = 1 - t / d.life;
+    if (life <= 0) continue;
+    const dist = (d.sp / 0.045) * (1 - Math.exp(-0.045 * t));
+    const q = P(cam, [d.d[0] * dist, -H + d.d[1] * dist, d.d[2] * dist], 1.5);
+    if (!q) continue;
+    const size = clamp(0.75 * q.s, 12, 64);
+    ctx.save();
+    ctx.globalAlpha = 0.9 * Math.pow(life, 1.4) * clamp(t / 3);
+    ctx.translate(q.x, q.y);
+    ctx.rotate(d.rot + d.spin * t);
+    glow(ctx, 0, 0, size, ARMS[d.k].col, 0.4);
+    ctx.drawImage(sprite(d.kind, ARMS[d.k].col, d.v), -size / 2, -size / 2, size, size);
+    ctx.restore();
+  }
+  // embers: slow, long-lived
+  for (let i = 0; i < N_EMBER; i++) {
+    const e = EMBERS[i];
+    const born = clamp((t - 4) / 10);
+    const life = Math.exp(-t / e.life) * born * (1 - prog(t, 70, 110));
+    if (life < 0.03) continue;
+    const dist = (e.v / 0.02) * (1 - Math.exp(-0.02 * t));
+    const wob = 0.6 * (noise1(t * 0.03 + e.tw) - 0.5);
+    const q = P(cam, [e.d[0] * dist + wob, -H + e.d[1] * dist - 0.01 * t, e.d[2] * dist - wob], 1.5);
+    if (!q) continue;
+    const tw = 0.5 + 0.5 * noise1(f * 0.15 + e.tw);
+    gb.add(SPARK_COLS[e.col], q.x, q.y, clamp((1.5 + 3.5 * e.sz) * (q.s / 40), 1.5, 14), 0.8 * life * tw);
+  }
+  gb.flush(ctx);
+  // blast core (gold-white, fast decay) + anamorphic flare
+  const k1 = Math.exp(-t / 4);
+  const tail = 1 - prog(t, 20, 60);
+  glow(ctx, O.x, O.y, 760 * k1 + 220, mix(C.gold, WHITE, 0.4), 0.6 * k1 + 0.1 * tail, 0.04);
+  glow(ctx, O.x, O.y, 140 * k1 + 40, mix(C.gold, WHITE, 0.72), 0.6 * (0.3 + 0.7 * k1) * (0.4 + 0.6 * tail), 0.1);
   const g = ctx.createLinearGradient(0, 0, w, 0);
   g.addColorStop(0, "rgba(120,200,255,0)");
-  g.addColorStop(0.5, withAlpha("#ffffff", 0.8 * k1 + 0.1));
+  g.addColorStop(0.5, withAlpha(WHITE, 0.85 * Math.exp(-t / 7) + 0.08 * (1 - prog(t, 8, 30))));
   g.addColorStop(1, "rgba(120,200,255,0)");
   ctx.fillStyle = g;
-  const sw = 3 + 30 * k1;
-  ctx.fillRect(0, O.y - sw / 2, w, sw);
-  ctx.globalCompositeOperation = "source-over";
+  const sw = 3 + 34 * Math.exp(-t / 7);
+  if (t < 30) ctx.fillRect(0, O.y - sw / 2, w, sw);
 };
 
-const drawNetwork = (ctx: CanvasRenderingContext2D, f: number, cam: Cam, O: Pt & { s: number; z: number }) => {
+const drawNetwork = (ctx: CanvasRenderingContext2D, w: number, h: number, f: number, cam: Cam, O: Pt & { s: number; z: number }) => {
   const t = f - IMPACT;
   if (t < 0) return;
-  const expand = 1 + 0.5 * (t / (DUR - IMPACT));
-  const spin = 0.003 * t;
+  const expand = 1 + 0.1 * prog(t, 0, 15) + 0.65 * ease.inOutSine(prog(t, 15, DUR - IMPACT + 20));
+  const spin = 0.0022 * t;
   const cs = Math.cos(spin);
   const sn = Math.sin(spin);
-  const scales = NET_R.map((R, k) => R * shellScale(k, t) * expand);
+  const scales = SHELL_R.map((R, k) => R * shellScale(k, t) * expand);
   const pos = NODES.map((n) => {
     const r = scales[n.k] * n.rj;
     if (r <= 0) return null;
     const x = n.d[0] * r;
     const z = n.d[2] * r;
-    return project(cam, x * cs - z * sn, n.d[1] * r, x * sn + z * cs, 1.5);
+    return project(cam, x * cs - z * sn, -H + n.d[1] * r, x * sn + z * cs, 1.0);
   });
-  // depth cue: the far side of each shell recedes into the dark, the near side close to the lens fades too
-  const fogOf = (z: number) => clamp(1.45 - (0.62 * z) / O.z, 0.12, 1) * clamp((z - 2) / 6);
-  ctx.globalCompositeOperation = "lighter";
-  // edges, batched by colour, depth and kind
-  const buckets: Seg[] = Array.from({ length: 48 }, () => []);
+  const dist = O.z;
+  // depth cue: the far side recedes into the dark; nodes right at the lens fade out too
+  const fogOf = (z: number) => clamp(1.5 - (0.7 * z) / dist, 0.14, 1) * clamp((z - 2) / 6);
+  const outside = (p: Pt) => p.x < -60 || p.x > w + 60 || p.y < -60 || p.y > h + 60;
+  // per-layer wave activity: each wave fires every layer in turn, SIG_D frames apart
+  const actK = new Array<number>(NSH).fill(0);
+  const colK = new Array<string>(NSH).fill(WHITE);
+  for (let wv = 0; wv < WAVES.length; wv++) {
+    for (let k = 0; k < NSH; k++) {
+      const dt = f - (WAVES[wv] + (k + 1) * SIG_D);
+      if (dt < -SIG_D || dt > 40) continue;
+      const v = dt < 0 ? 0.25 * (1 + dt / SIG_D) : Math.exp(-dt / 8);
+      if (v > actK[k]) {
+        actK[k] = v;
+        colK[k] = WAVE_COLS[wv % WAVE_COLS.length];
+      }
+    }
+  }
+  const born = clamp(t / 5);
+  // a shell that is still tiny on screen is dim (otherwise the first frames pile up into a white disc)
+  const vis = scales.map((R) => clamp((R * O.s - 30) / 150));
+  // edges
+  const buckets: Seg[] = Array.from({ length: N_BUCKET }, () => []);
   for (let i = 0; i < EDGES.length; i++) {
     const e = EDGES[i];
     const B = pos[e.b];
     if (!B) continue;
     const A = e.a < 0 ? O : pos[e.a];
     if (!A) continue;
-    if (!e.mesh && e.a >= 0 && scales[e.k] < scales[e.k - 1] * 1.08) continue;
-    const n = NODES[e.b];
+    if (e.cls === 0 && e.a >= 0 && scales[e.k] < scales[e.k - 1] * 1.08) continue;
+    if (outside(A) && outside(B)) continue;
+    if (vis[e.k] < 1 && hash(i * 0.917) > vis[e.k]) continue;
     const fog = fogOf((A.z + B.z) / 2);
     if (fog < 0.05) continue;
-    const key = ((n.hue * 4 + n.lvl) * 2 + (fog > 0.6 ? 1 : 0)) * 2 + (e.mesh ? 1 : 0);
-    buckets[key].push(A.x, A.y, B.x, B.y);
+    // radial wiring grows outward from the inner node
+    const g = e.cls ? 1 : clamp((t - SHELL_DELAY[e.k] - 1) / 5);
+    buckets[e.key + (fog > 0.62 ? 1 : 0)].push(A.x, A.y, lerp(A.x, B.x, g), lerp(A.y, B.y, g));
   }
-  const born = clamp(t / 6);
   buckets.forEach((sg, key) => {
-    const mesh = key % 2;
-    const near = Math.floor(key / 2) % 2;
-    const pal = Math.floor(key / 4);
-    const col = PAL[Math.floor(pal / 4)][pal % 4];
-    const a = mesh ? (near ? 0.26 : 0.1) : near ? 0.3 : 0.12;
-    strokeSegs(ctx, sg, col, near ? 1.5 : 1, a * born);
+    if (!sg.length) return;
+    const st = BUCKET_STYLE[key];
+    strokeSegs(ctx, sg, st.col, st.width, st.alpha * born);
   });
-  // signals racing outward along the layer wiring, one wave after another (forward passes)
+  // layer rims: the silhouette of every shell, faint; they flare as a wave passes through the layer
+  const rim: number[] = [];
+  for (let k = 0; k < NSH; k++) {
+    const R = scales[k];
+    if (R <= 0.05 || dist < R * 1.12) continue;
+    const rs = (FOCAL * R) / Math.sqrt(dist * dist - R * R);
+    if (rs > 1500) continue;
+    rim.push(k, rs);
+  }
+  ctx.lineWidth = 1.2;
+  for (let i = 0; i < rim.length; i += 2) {
+    const k = rim[i];
+    const rs = rim[i + 1];
+    ctx.strokeStyle = withAlpha(mix(C.ice, WHITE, 0.3), (k % 2 ? 0.035 : 0.07) * born * clamp(t / 20));
+    ctx.beginPath();
+    ctx.arc(O.x, O.y, rs, 0, TAU);
+    ctx.stroke();
+    if (actK[k] > 0.02) haloRing(ctx, O.x, O.y, rs, rs, colK[k], 1.6, 0.55 * actK[k]);
+  }
+  // wavefronts: one bright chromatic sphere per wave, racing outward through the layers
+  for (let wv = 0; wv < WAVES.length; wv++) {
+    const kf = (f - WAVES[wv]) / SIG_D - 1;
+    if (kf < -1 || kf > NSH) continue;
+    const k0 = Math.floor(kf);
+    const fr = kf - k0;
+    const Ra = k0 < 0 ? 0 : scales[Math.min(k0, NSH - 1)];
+    const Rb = scales[Math.min(k0 + 1, NSH - 1)];
+    const R = lerp(Ra, Rb, fr) * 1.02;
+    if (R <= 0.05 || dist < R * 1.15) continue;
+    const rs = (FOCAL * R) / Math.sqrt(dist * dist - R * R);
+    const a = 0.7 * clamp((kf + 1) / 1.5) * (1 - prog(kf, NSH - 3, NSH));
+    chromaRing(ctx, O.x, O.y, rs, rs, a, 2.4, WAVE_COLS[wv % WAVE_COLS.length]);
+  }
+  // signals: forward passes racing outward layer by layer on each wave, plus constant chatter
   const sig: Seg = [];
-  for (let w = 0; w < WAVES.length; w++) {
-    const dt = f - WAVES[w];
-    if (dt < 0 || dt > (NET_SHELLS.length + 1) * SIG_D) continue;
-    for (let i = 0; i < EDGES.length; i++) {
-      const e = EDGES[i];
-      if (e.mesh) continue;
-      const u = (dt - e.k * SIG_D) / SIG_D;
+  const sgb = new GlowBatch();
+  const sigGlow = (A: Pt, B: Pt & { z: number; s: number }, u: number, hue: number, br: number) => {
+    const x = lerp(A.x, B.x, u);
+    const y = lerp(A.y, B.y, u);
+    const u0 = Math.max(0, u - 0.5);
+    sig.push(lerp(A.x, B.x, u0), lerp(A.y, B.y, u0), x, y);
+    sgb.add(PAL[hue][0], x, y, clamp(0.3 * B.s, 5, 18), br * fogOf(B.z));
+  };
+  for (let wv = 0; wv < WAVES.length; wv++) {
+    const dt = f - WAVES[wv];
+    if (dt < 0 || dt > (NSH + 1) * SIG_D) continue;
+    for (let k = 0; k < NSH; k++) {
+      const u = (dt - k * SIG_D) / SIG_D;
       if (u < 0 || u > 1) continue;
-      if (e.a >= 0 && hash(i * 0.618 + w * 3.7) > 0.4) continue;
-      const B = pos[e.b];
-      const A = e.a < 0 ? O : pos[e.a];
-      if (!A || !B) continue;
-      const fog = fogOf(B.z);
-      if (fog < 0.1) continue;
-      const x = lerp(A.x, B.x, u);
-      const y = lerp(A.y, B.y, u);
-      const u0 = Math.max(0, u - 0.3);
-      sig.push(lerp(A.x, B.x, u0), lerp(A.y, B.y, u0), x, y);
-      const n = NODES[e.b];
-      glow(ctx, x, y, clamp(0.3 * B.s, 6, 24), PAL[n.hue][1], 0.9 * fog);
+      for (const i of RADIAL[k]) {
+        const e = EDGES[i];
+        const B = pos[e.b];
+        const A = e.a < 0 ? O : pos[e.a];
+        if (!A || !B || outside(B) || fogOf(B.z) < 0.1) continue;
+        sigGlow(A, B, u, NODES[e.b].hue, 1);
+      }
+    }
+    // the wiring a pass has just crossed keeps glowing for a moment in the wave's colour
+    const lit: Seg = [];
+    let litA = 0;
+    for (let k = 0; k < NSH; k++) {
+      const da = dt - (k + 1) * SIG_D;
+      if (da < 0 || da > 12) continue;
+      const a = Math.exp(-da / 4);
+      litA = Math.max(litA, a);
+      for (const i of RADIAL[k]) {
+        if (hash(i * 0.73) > a) continue;
+        const e = EDGES[i];
+        const B = pos[e.b];
+        const A = e.a < 0 ? O : pos[e.a];
+        if (!A || !B || (outside(A) && outside(B)) || fogOf(B.z) < 0.15) continue;
+        lit.push(A.x, A.y, B.x, B.y);
+      }
+    }
+    strokeSegs(ctx, lit, WAVE_COLS[wv % WAVE_COLS.length], 1.4, 0.3);
+  }
+  if (t > 14) {
+    const chat = clamp((t - 14) / 20);
+    for (let k = 1; k < NSH; k++) {
+      const L = RADIAL[k];
+      for (let j = k % 13; j < L.length; j += 13) {
+        const i = L[j];
+        const e = EDGES[i];
+        const u = frac(t / (16 + 10 * hash(i * 1.7)) + hash(i * 3.3));
+        const B = pos[e.b];
+        const A = pos[e.a];
+        if (!A || !B || outside(B) || fogOf(B.z) < 0.2) continue;
+        if (chat < 1 && hash(i * 0.37) > chat) continue;
+        sigGlow(A, B, u, NODES[e.b].hue, 0.4);
+      }
     }
   }
-  strokeSegs(ctx, sig, "#ffffff", 4, 0.14);
-  strokeSegs(ctx, sig, "#ffffff", 1.6, 0.7);
-  // nodes (kept dim inside the caption band)
-  const cap = capAt(f);
+  strokeSegs(ctx, sig, WHITE, 4, 0.12);
+  strokeSegs(ctx, sig, WHITE, 1.5, 0.6);
+  sgb.flush(ctx);
+  const ngb = new GlowBatch();
+  const wgb = new GlowBatch();
+  // nodes: even layers bigger and brighter than odd ones so the shells read as layers
   for (let i = 0; i < NODES.length; i++) {
     const p = pos[i];
-    if (!p) continue;
-    const band = 1 - 0.8 * cap * clamp((p.y - 740) / 120);
+    if (!p || outside(p)) continue;
     const n = NODES[i];
-    let act = 0;
-    for (let w = 0; w < WAVES.length; w++) {
-      const dt = f - (WAVES[w] + (n.k + 1) * SIG_D);
-      if (dt >= 0 && dt < 40 && hash(i * 1.3 + w * 2.9) < 0.5) act = Math.max(act, Math.exp(-dt / 9));
-    }
-    const pop = clamp((t - n.k) / 5) * (n.k < 3 ? 0.45 + 0.15 * n.k : 1);
-    const fog = fogOf(p.z) * band;
-    if (fog < 0.03) continue;
-    const r = clamp(0.13 * p.s, 1.8, 13) * (1 + 0.9 * act);
-    glow(ctx, p.x, p.y, r * 2.8, PAL[n.hue][n.lvl], (0.55 + 0.45 * act) * fog * pop);
-    if (act > 0.15 || n.h < 0.1) glow(ctx, p.x, p.y, r * 1.0, "#ffffff", (0.35 + 0.5 * act) * fog * pop);
+    const act = actK[n.k];
+    const bt = t - SHELL_DELAY[n.k];
+    const flare = bt >= 0 ? Math.exp(-bt / 6) : 0;
+    const pop = clamp(bt / 4) * (n.k < 4 ? 0.3 + 0.15 * n.k : 1);
+    // the ragged outer rim fades out instead of ending in a hard edge
+    const rimFade = n.k >= NSH - 2 ? 1.2 - 0.6 * n.rj : 1;
+    const fog = fogOf(p.z) * rimFade * vis[n.k];
+    if (fog < 0.03 || pop <= 0) continue;
+    const odd = n.k % 2;
+    const r = clamp(0.17 * p.s, 2.2, 10) * (odd ? 0.75 : 1.1) * (1 + 0.8 * act + 0.6 * flare);
+    ngb.add(PAL[n.hue][n.lvl], p.x, p.y, Math.min(20, r * 2.5), (odd ? 0.42 : 0.66) * (1 + 0.6 * act) * fog * pop);
+    const fl = n.k >= 3 ? flare : 0;
+    if (act > 0.15 || n.h < 0.1 || fl > 0.2) wgb.add(WHITE, p.x, p.y, Math.min(9, r), (0.3 + 0.6 * act + 0.4 * fl) * fog * pop);
   }
-  // persistent white-hot heart, beating with every wave
+  ngb.flush(ctx);
+  wgb.flush(ctx);
+  // the white-hot heart, beating with every wave
   let beat = 0;
-  for (const w of WAVES) {
-    const dt = f - w;
+  for (const wv of WAVES) {
+    const dt = f - wv;
     if (dt >= 0 && dt < 30) beat = Math.max(beat, Math.exp(-dt / 7));
   }
-  glow(ctx, O.x, O.y, 170 + 110 * beat, mix(C.gold, "#ffffff", 0.5), 0.32 + 0.3 * beat, 0.06);
-  glow(ctx, O.x, O.y, 30 + 16 * beat, "#ffffff", 1);
-  ctx.globalCompositeOperation = "source-over";
-};
-
-// ---------------------------------------------------------------------------------------------
-
-
-const drawScene = (ctx: CanvasRenderingContext2D, w: number, h: number, f: number) => {
-  const cam = camAt(f);
-  const O = project(cam, 0, 0, 0)!;
-  drawBackground(ctx, w, h, f, cam, O);
-  drawGrid(ctx, f, cam, ease.outCubic(prog(f, 8, 60)) * (1 - 0.5 * prog(f, IMPACT + 60, DUR)));
-  drawNetwork(ctx, f, cam, O);
-  drawStreams(ctx, f, cam);
-  const inh = inhaleAt(f);
-  if (inh > 0) {
-    ctx.fillStyle = `rgba(0,0,0,${0.5 * inh})`;
-    ctx.fillRect(0, 0, w, h);
-  }
-  drawCore(ctx, w, f, cam, O);
-  drawBlast(ctx, w, f, cam, O);
-  // keep the caption band calm
-  const ca = capAt(f);
-  if (ca > 0) {
-    const g = ctx.createLinearGradient(0, 740, 0, h);
-    g.addColorStop(0, "rgba(0,0,0,0)");
-    g.addColorStop(0.45, `rgba(0,0,0,${0.5 * ca})`);
-    g.addColorStop(1, `rgba(0,0,0,${0.65 * ca})`);
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 740, w, h - 740);
+  const settle = clamp((t - 6) / 20);
+  glow(ctx, O.x, O.y, (170 + 120 * beat) * settle, mix(C.gold, WHITE, 0.5), (0.2 + 0.28 * beat) * settle, 0.06);
+  glow(ctx, O.x, O.y, (30 + 20 * beat) * settle, WHITE, settle);
+  // dust: drifts past the lens as the camera orbits and dives in
+  const da = clamp((t - 20) / 30);
+  if (da > 0) {
+    for (const d of DUST) {
+      const q = P(cam, d.p, 0.8);
+      if (!q || outside(q)) continue;
+      const rr = clamp(0.05 * q.s, 0.8, 9);
+      const tw = 0.6 + 0.4 * noise1(f * 0.04 + d.tw);
+      glow(ctx, q.x, q.y, rr * (1 + d.sz), "#cfe0ff", (0.22 * tw * da * clamp((q.z - 1) / 4)) / Math.sqrt(Math.max(1, rr / 2)));
+    }
   }
 };
 
-// lateral chromatic aberration (radial RGB split around the blast) for the frames around the impact
-const caAt = (f: number) => {
-  const t = f - IMPACT;
-  if (t < -3) return 0;
-  if (t < 0) return 0.006 * (t + 4);
-  return 0.024 * Math.exp(-t / 10);
-};
+// =============================================================================================
+
 const offs: HTMLCanvasElement[] = [];
 const off = (i: number, w: number, h: number) => {
   if (!offs[i]) {
@@ -1047,6 +1514,60 @@ const off = (i: number, w: number, h: number) => {
     offs[i] = c;
   }
   return offs[i];
+};
+
+const drawScene = (ctx: CanvasRenderingContext2D, w: number, h: number, f: number) => {
+  const cam = camAt(f);
+  const O = project(cam, O3[0], O3[1], O3[2])!;
+  drawBackground(ctx, w, h, f, cam, O);
+  drawFloor(ctx, f, cam, 1 - prog(f, IMPACT + 5, IMPACT + 45));
+  const inh = inhaleAt(f);
+  if (inh > 0) {
+    ctx.fillStyle = `rgba(0,0,0,${0.75 * inh})`;
+    ctx.fillRect(0, 0, w, h);
+  }
+  // every effect goes onto an additive layer, so the caption band can be cleared without touching the sky
+  const L = off(2, w, h);
+  const g = L.getContext("2d")!;
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalAlpha = 1;
+  g.globalCompositeOperation = "source-over";
+  g.clearRect(0, 0, w, h);
+  g.globalCompositeOperation = "lighter";
+  drawMotes(g, f, cam);
+  drawRays(g, f, O);
+  drawNetwork(g, w, h, f, cam, O);
+  drawStreams(g, f, cam);
+  drawCore(g, w, f, cam, O);
+  drawBlast(g, w, f, cam, O);
+  const band = bandAt(f);
+  if (band > 0) {
+    g.globalCompositeOperation = "destination-out";
+    const m = g.createLinearGradient(0, 725, 0, 815);
+    m.addColorStop(0, "rgba(0,0,0,0)");
+    m.addColorStop(1, `rgba(0,0,0,${band})`);
+    g.fillStyle = m;
+    g.fillRect(0, 725, w, h - 725);
+  }
+  ctx.globalCompositeOperation = "lighter";
+  ctx.drawImage(L, 0, 0);
+  ctx.globalCompositeOperation = "source-over";
+  // keep the caption band calm (darken whatever background is left there)
+  if (band > 0) {
+    const gr = ctx.createLinearGradient(0, 730, 0, h);
+    gr.addColorStop(0, "rgba(0,0,0,0)");
+    gr.addColorStop(0.45, `rgba(0,0,0,${0.55 * band})`);
+    gr.addColorStop(1, `rgba(0,0,0,${0.75 * band})`);
+    ctx.fillStyle = gr;
+    ctx.fillRect(0, 730, w, h - 730);
+  }
+};
+
+// lateral chromatic aberration (radial RGB split around the blast) in the first frames after the impact
+const caAt = (f: number) => {
+  const t = f - IMPACT;
+  if (t < 0 || t > 16) return 0;
+  return 0.026 * Math.exp(-t / 9) * (1 - prog(t, 10, 16));
 };
 
 const World: React.FC = () => (
@@ -1066,7 +1587,7 @@ const World: React.FC = () => (
       drawScene(a, w, h, f);
       const T = off(1, w, h);
       const tc = T.getContext("2d")!;
-      const O = project(camAt(f), 0, 0, 0)!;
+      const O = project(camAt(f), O3[0], O3[1], O3[2])!;
       ctx.fillStyle = "#000";
       ctx.fillRect(0, 0, w, h);
       ctx.globalCompositeOperation = "lighter";
@@ -1089,24 +1610,34 @@ const World: React.FC = () => (
   />
 );
 
+/** Stream labels: they ride along with the camera and leave before the charge peaks. */
+const LABEL_IN = STREAMS + 20;
+const LABEL_OUT = MEET + 14;
+// offsets from each source on the floor (px): above the two side portals, beside the gold one
+const LABEL_OFF = [
+  { dx: 0, dy: -160 },
+  { dx: 0, dy: -160 },
+  { dx: 175, dy: -72 },
+];
 const Labels: React.FC = () => {
   const frame = useCurrentFrame();
-  const a = ease.outCubic(prog(frame, 76, 96)) * (1 - prog(frame, IMPACT - 22, IMPACT - 6));
-  if (a <= 0) return null;
+  const a = 1 - prog(frame, LABEL_OUT, LABEL_OUT + 16);
+  if (a <= 0 || frame < LABEL_IN) return null;
   const cam = camAt(frame);
   return (
     <AbsoluteFill style={{ opacity: a }}>
       {ARMS.map((arm, k) => {
-        const S = P(cam, armPos(k, 0));
+        const S = P(cam, groundOf(k, 0));
         if (!S) return null;
-        const t = ease.outCubic(prog(frame, 78 + k * 5, 100 + k * 5));
+        const t = ease.outCubic(prog(frame, LABEL_IN + k * 5, LABEL_IN + 20 + k * 5));
+        const o = LABEL_OFF[k];
         return (
           <div
             key={arm.en}
             style={{
               position: "absolute",
-              left: clamp(S.x + arm.lx, 140, 1780),
-              top: S.y + arm.ly,
+              left: clamp(S.x + o.dx, 170, 1750),
+              top: S.y + o.dy,
               transform: `translateX(-50%) translateY(${(1 - t) * 16}px)`,
               textAlign: "center",
               opacity: t,
@@ -1116,7 +1647,7 @@ const Labels: React.FC = () => {
               style={{
                 fontFamily: FONT_CN,
                 fontWeight: 900,
-                fontSize: 50,
+                fontSize: 52,
                 lineHeight: 1.15,
                 letterSpacing: "0.12em",
                 color: "#fff",
@@ -1138,12 +1669,13 @@ const Labels: React.FC = () => {
 export const Converge: React.FC = () => {
   const frame = useCurrentFrame();
   const c = chargeAt(frame);
-  const sh = sumShake(shake(frame, IMPACT, 64, 46), shake(frame, IMPACT + 3, 24, 80), shake(frame, MEET, 12, 18));
-  const env = Math.max(Math.pow(1 - prog(frame, IMPACT, IMPACT + 46), 2), 0.4 * Math.pow(1 - prog(frame, IMPACT + 3, IMPACT + 83), 2)) * (frame >= IMPACT ? 1 : 0);
-  const trem = frame < IMPACT ? (noise1(frame * 0.9) - 0.5) * 10 * c * c : 0;
-  const tremY = frame < IMPACT ? (noise1(frame * 0.9 + 40) - 0.5) * 10 * c * c : 0;
+  const sh = sumShake(shake(frame, IMPACT, 66, 50), shake(frame, IMPACT + 3, 26, 90), shake(frame, MEET, 22, 20));
+  const env =
+    frame >= IMPACT ? Math.max(Math.pow(1 - prog(frame, IMPACT, IMPACT + 50), 2), 0.4 * Math.pow(1 - prog(frame, IMPACT + 3, IMPACT + 93), 2)) : 0;
+  const trem = frame < IMPACT ? (noise1(frame * 0.9) - 0.5) * 12 * c * c : 0;
+  const tremY = frame < IMPACT ? (noise1(frame * 0.9 + 40) - 0.5) * 12 * c * c : 0;
   // zoom punch on the impact, plus overscan so the shaken frame never shows its edges
-  const punch = (frame >= IMPACT ? 1 + 0.07 * Math.exp(-(frame - IMPACT) / 6) : 1) * (1 + 0.09 * env + 0.012 * c * c);
+  const punch = (frame >= IMPACT ? 1 + 0.07 * Math.exp(-(frame - IMPACT) / 6) : 1) * (1 + 0.1 * env + 0.014 * c * c);
   const fade = Math.min(ease.outCubic(prog(frame, 0, 14)), 1 - prog(frame, DUR - 16, DUR));
   return (
     <AbsoluteFill style={{ background: "#000" }}>
@@ -1152,7 +1684,8 @@ export const Converge: React.FC = () => {
           <World />
           <Labels />
         </AbsoluteFill>
-        <Flash at={IMPACT} dur={8} peak={1} />
+        {/* mounted only from the impact on, so the frames before it stay the darkest of the inhale */}
+        {frame >= IMPACT && <Flash at={IMPACT} dur={6} peak={1} />}
       </AbsoluteFill>
       <ChapterCard index={7} title="大爆发" en="THE EXPLOSION" color={C.gold} dur={80} />
       <Captions accent={C.gold} items={CAPS} />

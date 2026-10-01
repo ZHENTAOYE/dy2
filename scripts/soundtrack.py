@@ -17,10 +17,12 @@ own seeded numpy Generator, nothing depends on the clock. All timing is read fro
   * the output lasts exactly sum(durations) / fps seconds (48 kHz, 16-bit PCM, stereo)
 
 Tuning lives in the tables right below:
-  CUE_SOUNDS   scene -> cue -> list of sound specs  (what you hear on every cue)
-  TICK_SOUNDS  scene -> ticks series -> sound spec  (unknown series get DEFAULT_TICK)
-  SCENE_MUSIC  scene -> music bed (chords per cue, level, brightness, arpeggio / bass / drum sections)
-  SYNC_*       timings mirrored from scene code (e.g. Moore.tsx STEP) - keep them in sync
+  CUE_SOUNDS     scene -> cue -> list of sound specs  (what you hear on every cue; unknown cues are silent
+                 and warned about, except in scenes listed in SCENE_FALLBACK)
+  TICK_SOUNDS    scene -> ticks series -> sound spec  (unknown series get DEFAULT_TICK)
+  SCENE_MUSIC    scene -> music bed (chords per cue, level, brightness, arpeggio / bass / drum sections)
+  SYNC_*         timings mirrored from scene code (e.g. Moore.tsx STEP) - keep them in sync
+  PEAK_DBFS, DRUM_GLUE   master ceiling and drum-bus soft clip (keeps the big impacts the loudest samples)
 
 Spec keys every sound understands:  gain, pan, rev (reverb send), duck=(depth, release_s),
   at=<frames offset>,  to=<time-expr> (ends exactly there),  until=<time-expr> (lasts until it),
@@ -48,6 +50,8 @@ SR = 48000
 SEED = 1946
 XF = 0.8            # crossfade between music-bed segments (s)
 PEAK_DBFS = -1.0
+DRUM_GLUE = 0.8     # drum-bus soft clip (tanh knee, linear units): tames kick+snare peaks so they don't set the
+                    # master's reference level - the big impacts should be the loudest samples in the film
 
 
 def S(snd, **kw):
@@ -183,14 +187,28 @@ CUE_SOUNDS = {
     # -- Chapter 8 . finale ----------------------------------------------------------------------
     "finale": {
         "chapter": [S("whoosh", gain=0.42)],
-        "ignite": [S("pulse", gain=0.4), S("chime", gain=0.3)],          # the ribbon lights up from 1946
+        # the ribbon ignites at 1946 and the light front runs along the curve: a soft flare + a long forward whoosh
+        "ignite": [S("pulse", gain=0.34), S("whoosh", dur=2.6, peak=0.22, lo=160, hi=2600, gain=0.34),
+                   S("chime", gain=0.28)],
         "climb": [S("riser", to="flash", top=12500, gain=0.62), S("swell", dur=4.0, gain=0.3)],
         "here": [S("swell", dur=3.0, bright=True, gain=0.45)],
-        "wave": [S("whoosh", to="flash", peak=0.97, hi=6000, gain=0.5)],  # the last doubling wave races up
-        "flash": [S("boom", size=1.8, metal=0.4, dur=5.0, gain=1.2), S("shimmer", dur=4.5, gain=0.45),
-                  S("crash", gain=0.45), S("tail", until="end", gain=0.5, rev=0.0)],
+        # the last doubling wave races up the whole curve (inCubic): an accelerating whoosh + a chord swell,
+        # both cresting exactly on the flash
+        "wave": [S("whoosh", to="flash", peak=0.97, hi=6000, gain=0.5),
+                 S("swell", to="flash", rise=True, bright=True, gain=0.42)],
+        # the giant impact clears after ~3 s and leaves ONE sustained tone under the final title,
+        # which lets go into a long hall reverb that has died away by "end"
+        "flash": [S("boom", size=1.8, metal=0.4, dur=3.4, gain=1.2, rev=0.3), S("hit", size=1.1, gain=0.6),
+                  S("shimmer", dur=4.0, gain=0.42),
+                  S("crash", gain=0.45), S("tail", until="end", gain=0.62, rev=0.0)],
         "end": [],  # silence after the tail
     },
+}
+
+# Cue names a scene may still add while it is being built: they get this instead of silence (with a warning).
+SCENE_FALLBACK = {
+    "zoomout": [S("whoosh", peak_at_cue=True, at=-2, peak=0.85, dur=1.3, gain=0.38),  # another level of the pull-back
+                S("hit", size=0.8, gain=0.75)],
 }
 
 # Rhythmic series from a scene's "ticks" object (synths receive i = index, n = count).
@@ -334,14 +352,17 @@ SCENE_MUSIC = {
     # Chapter 8 - a reflective breath, full lift on the climb, peak at the flash, single-tone tail
     "finale": dict(level=0.6, saw=0.5, cutoff=1900,
                    chords=[("@start", "F1 F2 C3 A3 E4"), ("climb", "Bb1 Bb2 F3 D4 A4"),
-                           ("here", "D2 D3 A3 F4 A4 E5", dict(level=0.95, cutoff=6000, saw=0.8)),
+                           ("here", "D2 D3 A3 F4 A4 E5", dict(level=0.88, cutoff=6000, saw=0.8)),
                            ("flash+8", None)],
                    cutoff_auto=[("climb", 1.0), ("flash", 2.4)],
-                   auto=[("@start", 0.8), ("climb", 0.9), ("here", 1.1), ("flash-3", 1.25), ("flash", 0.0)],
+                   # a breath before the blow: the band drops out ~2 frames before the flash while the
+                   # riser / wave whoosh / swell keep climbing into it
+                   auto=[("@start", 0.8), ("climb", 0.9), ("here", 1.1), ("flash-6", 1.2), ("flash-2", 0.25),
+                         ("flash", 0.0)],
                    arp=[("@start", "climb", dict(bpm=120, div=2, gain=0.16, bright=0.35)),
-                        ("climb", "flash", dict(bpm=120, div=4, gain=0.31, bright=0.85, anchor="flash"))],
-                   bass=[("climb", "flash", dict(bpm=120, div=2, gain=0.44, anchor="flash"))],
-                   drums=[("climb", "flash", "build", 1.0, {"anchor": "flash"})]),
+                        ("climb", "flash-3", dict(bpm=120, div=4, gain=0.31, bright=0.85, anchor="flash"))],
+                   bass=[("climb", "flash-3", dict(bpm=120, div=2, gain=0.44, anchor="flash"))],
+                   drums=[("climb", "flash-3", "build", 0.86, {"anchor": "flash"})]),
 }
 DEFAULT_MUSIC = dict(level=0.5, saw=0.5, cutoff=2000, chords=[("@start", "D2 A2 D3 F3")])
 
@@ -1154,15 +1175,19 @@ def sfx_dive_drone(rng, dur=20.0):
     return (v * 0.35 + shaped_noise(rng, n, g) * 0.25) * smooth(t / 1.5) * smooth((dur - t) / 1.2)
 
 
-def sfx_swell(rng, dur=5.0, chord=None, low=False, bright=False):
-    """A pad swell on the current chord (deep = lower voicing), filter opening with the envelope."""
+def sfx_swell(rng, dur=5.0, chord=None, low=False, bright=False, rise=False):
+    """A pad swell on the current chord (deep = lower voicing), filter opening with the envelope.
+    rise=True: a one-way crescendo that crests at the very end (use with to=<cue> to land on a hit)."""
     notes = sorted(chord or [38, 45, 50, 53])
     if low:
         notes = [m - 12 if i < 3 and m - 12 >= 28 else m for i, m in enumerate(notes)]
     n = N(dur)
     t = tvec(n)
     y = tile_abs(chord_loop(notes, 0.6), 0, n).astype(np.float64)
-    env = smooth(t / (0.55 * dur)) ** 1.5 * smooth((dur - t) / (0.45 * dur))
+    if rise:
+        env = smooth(t / dur) ** 2.2 * smooth((dur - t) / 0.03)
+    else:
+        env = smooth(t / (0.55 * dur)) ** 1.5 * smooth((dur - t) / (0.45 * dur))
     return lowpass(y, 250 + ((2600 if bright else 1200) - 250) * env, 2) * env * 0.7
 
 
@@ -1175,19 +1200,24 @@ def sfx_crash(rng, dur=2.6):
 
 
 def sfx_tail(rng, dur=5.0, chord=None):
-    """Finale: everything collapses to one sustained tone with a long reverb, fading into silence."""
+    """Finale: everything collapses to ONE sustained tone (the chord's root, octave 4). It holds under the
+    final title - swelling a little as the impact clears, a slow vibrato blooming in - then lets go
+    (from ~55 % of dur) into a long synthetic-hall reverb that has faded to silence at the end."""
     root = chord_pcs(chord or [62])[0]
     f = hz(12 * 5 + root)  # octave 4
     n = N(dur)
     t = tvec(n)
-    ph = 2 * np.pi * np.cumsum(f * (1 + 0.0015 * np.sin(2 * np.pi * 4.5 * t) * smooth(t / 1.5))) / SR
-    y = np.sin(ph) + 0.22 * np.sin(2 * ph + 0.5) + 0.08 * np.sin(3 * ph + 1.0)
-    hold = 0.25 * dur
-    env = smooth(t / 0.04) * np.where(t < hold, 1.0, np.exp(-(t - hold) / (0.11 * dur)))
-    dry = pan(y * env * 0.5)
-    ir = make_ir(rng, min(6.0, dur), 5.0, 3.0, predelay=0.03)
+    vib = 1 + 0.0016 * np.sin(2 * np.pi * 4.3 * t) * smooth((t - 0.8) / 1.6)
+    ph = 2 * np.pi * np.cumsum(f * vib) / SR
+    ph2 = 2 * np.pi * np.cumsum(f * 1.0013 * vib) / SR  # a slow beat keeps the single tone alive
+    y = (np.sin(ph) + 0.55 * np.sin(ph2 + 1.3) + 0.2 * np.sin(2 * ph + 0.5) + 0.06 * np.sin(3 * ph + 1.0)) / 1.55
+    let_go = 0.55 * dur
+    env = (smooth(t / 0.05) * (0.75 + 0.25 * smooth(t / (0.35 * dur)))
+           * np.where(t < let_go, 1.0, np.exp(-(t - let_go) / (0.1 * dur))))
+    dry = np.stack([y * env, np.concatenate([np.zeros(N(0.0004)), (y * env)[:n - N(0.0004)]])]) * 0.5
+    ir = make_ir(rng, min(6.0, dur), 4.5, 2.6, predelay=0.03)
     wet = np.stack([fft_convolve(dry[c], ir[c])[:n] for c in range(2)])
-    return (dry * 0.7 + wet * 0.55) * (1 - smooth((t - 0.8 * dur) / (0.2 * dur)))
+    return (dry * 0.7 + wet * 0.75) * (1 - smooth((t - 0.72 * dur) / (0.28 * dur)))
 
 
 def sfx_pop_swarm(rng, times=()):
@@ -1214,6 +1244,15 @@ SYNTHS = dict(boom=sfx_boom, hit=sfx_hit, riser=sfx_riser, whoosh=sfx_whoosh, su
               rush=sfx_rush, descend=sfx_descend, rise_tone=sfx_rise_tone, dive_drone=sfx_dive_drone,
               swell=sfx_swell, crash=sfx_crash, tail=sfx_tail, pop_swarm=sfx_pop_swarm)
 _PARAMS = {name: set(inspect.signature(fn).parameters) for name, fn in SYNTHS.items()}
+IMPULSIVE = ("boom", "hit", "click", "pop", "tick", "blip", "token", "zero_hit", "fire", "thump", "wave", "tile", "shatter")
+
+
+def is_impulsive(ev):
+    """Sounds with a sharp attack on their sync time (the onset check). The last 'tile' is the sea tilting
+    away - a whoosh, not a hit."""
+    if ev.snd == "tile" and ev.params.get("n", 1) > 1 and ev.params.get("i") == ev.params.get("n") - 1:
+        return False
+    return ev.snd in IMPULSIVE
 
 
 # ================================================================================================
@@ -1549,10 +1588,14 @@ def expand_events(scenes):
             warn(f"scene '{sc.id}' has no entry in CUE_SOUNDS - its cues are silent")
             table = {}
         for cue in sc.cues:
-            if cue not in table:
+            specs = table.get(cue)
+            if specs is None and sc.id in SCENE_FALLBACK:
+                warn(f"no sound mapped for cue {sc.id}.{cue} - using the {sc.id} fallback")
+                specs = SCENE_FALLBACK[sc.id]
+            elif specs is None:
                 warn(f"no sound mapped for cue {sc.id}.{cue}")
                 continue
-            for spec in table[cue]:
+            for spec in specs:
                 evs += expand_spec(sc, cue, spec)
         for cue in table:
             if cue not in sc.cues:
@@ -1815,6 +1858,11 @@ def render(quiet=False, report=False):
         if ev.rev > 0:
             add_to(srev, ev.start, x, ev.gain * ev.rev)
         ev.dur = x.shape[1] / SR
+        if report and is_impulsive(ev):  # for the onset check: own onset (in isolation) + the head of the sound
+            k0 = N(ev.t - ev.start)
+            head = np.abs(x[:, k0:k0 + N(0.15)]).max(axis=0)
+            ev.iso_ms = (ev.start - ev.t) * 1000 + (int(np.argmax(head > 0.1 * head.max())) / SR * 1000 if head.size else 0)
+            ev.head = (x[:, k0:k0 + N(0.03)].mean(axis=0) * ev.gain).astype(np.float32)
         d = default_duck(ev)
         if d:
             ducks.append((ev.t, d[0], d[1]))
@@ -1839,6 +1887,7 @@ def render(quiet=False, report=False):
     pos = np.arange(n_total) / SR  # seconds, like tm
     mus *= np.interp(pos, tm, np.minimum(big, duck_curve(pumps))).astype(np.float32)
     drm *= np.interp(pos, tm, big).astype(np.float32)
+    drm = (DRUM_GLUE * np.tanh(drm / DRUM_GLUE)).astype(np.float32)  # drum-bus glue
     del pos
 
     ir = make_ir(np.random.default_rng([SEED, 99]), 3.2, 2.4, 1.1)
@@ -1851,7 +1900,7 @@ def render(quiet=False, report=False):
 
     mix = highpass(mix, 22.0)
     mix -= mix.mean(axis=1, keepdims=True)
-    drive = 1.5
+    drive = 2.0  # tanh knee: only the biggest impacts reach it; lifts the bed ~1.5 dB relative to the peaks
     mix = np.tanh(mix * (drive / (np.max(np.abs(mix)) + 1e-12))) / math.tanh(drive)  # soft limiter
     fades(mix, 0.05, 0.5)
     mix *= 10 ** (PEAK_DBFS / 20) / (np.max(np.abs(mix)) + 1e-12)
@@ -1935,19 +1984,41 @@ def loudness_report(mix, sfx_dry, scenes, events):
         print(f"  {fmt_t(t):>8}  {20 * math.log10(st[i] + 1e-9):6.1f} dB   nearest impact: {near.label} ({near.snd})")
         if len(shown) >= 10:
             break
-    impulsive = ("boom", "hit", "click", "pop", "tick", "blip", "token", "zero_hit", "fire", "thump", "wave", "tile", "shatter")
-    imp = [ev for ev in events if ev.snd in impulsive and ev.start == ev.t]
+    imp = [ev for ev in events if ev.start == ev.t and hasattr(ev, "iso_ms")]
+    # 1) every impulsive event rendered in isolation: its first strong sample vs its sync time
+    late = [ev for ev in imp if abs(ev.iso_ms) > 33]
+    worst = max((abs(ev.iso_ms) for ev in imp), default=0.0)
+    print(f"\nonset check, isolated: {len(imp) - len(late)}/{len(imp)} impulsive events start within 1 frame "
+          f"of their cue (worst {worst:.1f} ms)")
+    for ev in late:
+        print(f"  CHECK {ev.label} ({ev.snd}) {ev.iso_ms:+.0f} ms")
+    # 2) in context on the effects bus - only where the event owns most of the bus energy over the whole
+    #    search window (in the detector's domain); otherwise an overlapping transient (a swarm of pops, ice
+    #    shards, ...) can own the steepest rise and the measurement says nothing about this event
     ts = np.array(sorted({ev.t for ev in imp}))
-    bad = []
+    bad, masked = [], 0
     for ev in imp:
         j = int(np.searchsorted(ts, ev.t))
         gap = min(ev.t - ts[j - 1] if j > 0 else 1.0, ts[j + 1] - ev.t if j + 1 < len(ts) else 1.0)
+        half = int(max(10, min(100, 500 * gap)))  # never reach a neighbour's onset
         lf = ev.snd in ("boom", "hit", "thump", "wave", "zero_hit", "tile")
-        d = onset_ms(sfx_dry, ev.t, int(max(10, min(100, 500 * gap))), diff=not lf)  # never reach a neighbour's onset
+        i0 = N(ev.t)
+        a = max(0, i0 - N(half / 1000))
+        h = ev.head[:max(0, len(sfx_dry) - i0)]
+        bus = sfx_dry[a:i0 + len(h)].astype(np.float64)
+        own = np.zeros_like(bus)
+        own[i0 - a:] = h
+        if not lf:
+            bus, own = np.diff(bus), np.diff(own)
+        if np.sum(own * own) < 0.5 * np.sum(bus * bus):
+            masked += 1
+            continue
+        d = onset_ms(sfx_dry, ev.t, half, diff=not lf)
         if abs(d) > 33:
             bad.append((ev.label, ev.snd, d))
-    total = len(imp)
-    print(f"\nonset check on the effects bus: {total - len(bad)}/{total} impulsive events within 1 frame (33 ms)")
+    checked = len(imp) - masked
+    print(f"onset check, effects bus: {checked - len(bad)}/{checked} dominant events within 1 frame "
+          f"({masked} masked by louder overlapping sounds - covered by the isolated check)")
     for lab, snd, d in bad:
         print(f"  CHECK {lab} ({snd}) {d:+d} ms")
     print("onset check on the final mix (big impacts):")

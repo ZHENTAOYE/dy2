@@ -12,12 +12,12 @@
     { "id": "nano", "duration": 690, "cues": { "zoom": 0, "atoms": 560 } },
     { "id": "wall", "duration": 690, "cues": { "chapter": 0, "draw": 100, "slam": 205, "heat": 330, "split": 500 } },
     { "id": "gpu", "duration": 960, "cues": { "chapter": 0, "cores": 100, "race": 360, "burst": 372, "matrix": 610 } },
-    { "id": "neural", "duration": 600, "cues": { "chapter": 0, "perceptron": 90, "freeze": 230, "flood": 360, "shatter": 374, "imagenet": 470 }, "ticks": { "fire": [184, 216, 392, 407, 420, 432, 443, 453, 462] } },
-    { "id": "alexnet", "duration": 480, "cues": { "bars": 70, "drop": 185, "human": 320 }, "ticks": { "bar": [104, 118, 238, 252, 266] } },
-    { "id": "converge", "duration": 420, "cues": { "chapter": 0, "streams": 70, "meet": 150, "impact": 210 }, "ticks": { "pulse": [162, 177, 189, 198, 204, 208], "wave": [228, 262, 296, 330, 364] } },
-    { "id": "transformer", "duration": 540, "cues": { "attend": 30, "parallel": 280, "generate": 400, "users": 420 }, "ticks": { "tile": [306, 320, 334, 348, 362], "token": [408, 416, 424, 431, 439, 447, 455, 462, 470, 478, 486, 494] } },
-    { "id": "zoomout", "duration": 840, "cues": { "start": 0, "chip": 140, "server": 290, "rack": 380, "hall": 450, "city": 600, "earth": 690 } },
-    { "id": "compare", "duration": 630, "cues": { "zeros": 90, "suffix": 288, "inhale": 298, "gap": 330, "doubling": 450, "full": 594 }, "ticks": { "zero": [110, 126, 141, 155, 167, 179, 190, 200, 209, 218, 226, 233, 240, 247, 252, 258, 263, 268, 272, 276], "double": [458, 463, 468, 473, 478, 482, 487, 491, 495, 499, 503, 507, 511, 514, 518, 521, 524, 527, 530, 533, 536, 539, 542, 544, 547, 549, 552, 554, 556, 558, 560, 562, 564, 566, 568, 570, 571, 573, 575, 576, 578, 579, 581, 582, 583, 585, 586, 587, 588, 589, 590, 592, 593, 594] } },
-    { "id": "finale", "duration": 810, "cues": { "chapter": 0, "ignite": 88, "climb": 330, "here": 485, "wave": 588, "flash": 620, "end": 780 }, "ticks": { "pylon": [179, 183, 218, 254, 332], "ring": [328, 430] } }
+    { "id": "neural", "duration": 600, "cues": { "chapter": 0, "perceptron": 90, "freeze": 230, "flood": 360, "shatter": 374, "imagenet": 470, "lockin": 510 }, "ticks": { "fire": [184, 216, 392, 407, 420, 432, 443, 453, 462, 510, 538, 555, 568, 578] } },
+    { "id": "alexnet", "duration": 480, "cues": { "bars": 70, "drop": 185, "human": 320 }, "ticks": { "bar": [100, 115, 238, 252, 266] } },
+    { "id": "converge", "duration": 420, "cues": { "chapter": 0, "streams": 70, "meet": 150, "impact": 210 }, "ticks": { "pulse": [162, 177, 189, 198, 204, 208], "wave": [238, 266, 294, 322, 350, 378] } },
+    { "id": "transformer", "duration": 540, "cues": { "attend": 30, "parallel": 280, "generate": 400, "users": 420 }, "ticks": { "tile": [304, 316, 327, 337, 347], "token": [412, 419, 426, 433, 440, 447, 454, 461, 468, 475, 482, 489] } },
+    { "id": "zoomout", "duration": 840, "cues": { "start": 0, "chip": 140, "server": 290, "rack": 380, "hall": 450, "city": 600, "earth": 690 }, "ticks": { "gpu": [302, 306, 311, 315, 319, 323, 327], "tray": [386, 389, 393, 397, 401, 404, 408, 412] } },
+    { "id": "compare", "duration": 630, "cues": { "zeros": 90, "suffix": 288, "inhale": 298, "gap": 330, "doubling": 450, "full": 580 }, "ticks": { "zero": [110, 126, 141, 155, 167, 179, 190, 200, 209, 218, 226, 233, 240, 247, 252, 258, 263, 268, 272, 276], "double": [458, 462, 465, 469, 472, 475, 479, 482, 485, 488, 491, 494, 496, 499, 502, 504, 507, 509, 512, 514, 517, 519, 521, 523, 525, 527, 529, 531, 533, 535, 537, 539, 541, 542, 544, 545, 547, 548, 550, 551, 553, 554, 555, 556, 557, 559, 560, 561, 562, 563, 564, 565, 566, 567] } },
+    { "id": "finale", "duration": 810, "cues": { "chapter": 0, "ignite": 88, "climb": 330, "here": 485, "wave": 588, "flash": 620, "end": 780 }, "ticks": { "pylon": [152, 156, 198, 244, 323], "ring": [343, 424], "double": [] } }
   ]
 }

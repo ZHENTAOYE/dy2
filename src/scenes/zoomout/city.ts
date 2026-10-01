@@ -1,18 +1,18 @@
-// City around the campus (street lights, highways, buildings, power lines) and the surrounding region of towns.
+// City around the campus (street lights, highways, power lines) and the surrounding region of towns.
 import { glow } from "../../lib/canvas";
 import { clamp, hash, rng } from "../../lib/math";
 import { C } from "../../lib/theme";
 import { Cam, onEarth, proj, R_EARTH } from "./cam";
 import { landAt } from "./earth";
+import { CC, drawNear, NEAR_R, riverV } from "./near";
 import { CAMPUS_U0, CAMPUS_U1, CAMPUS_V0, CAMPUS_V1, SUBSTATION } from "./world";
 
 type G = CanvasRenderingContext2D;
 
-export const CC: [number, number] = [3600, -4300]; // city centre (flat u, v metres from the campus)
+export { CC };
 const CAMPUS_MID: [number, number] = [(CAMPUS_U0 + CAMPUS_U1) / 2, (CAMPUS_V0 + CAMPUS_V1) / 2];
 const radiusAt = (ang: number) =>
   10800 * (0.8 + 0.16 * Math.sin(ang * 3 + 1.3) + 0.1 * Math.sin(ang * 5 - 0.4) + 0.05 * Math.sin(ang * 11));
-const riverV = (u: number) => CC[1] + 1700 + 1300 * Math.sin((u - CC[0]) / 2600) + 380 * Math.sin((u - CC[0]) / 820);
 const inCampus = (u: number, v: number, m: number) => u > CAMPUS_U0 - 60 - m && u < CAMPUS_U1 + m && v > CAMPUS_V0 - m && v < CAMPUS_V1 + m;
 
 // colour buckets for batched drawing
@@ -34,9 +34,12 @@ const makePts = (list: number[]): Pts => {
 };
 
 let cityPts: Pts | null = null;
+let cityIn: Pts | null = null;
+/** Street lamps of the whole city; `cityIn` holds the ones the near layer replaces up close. */
 const city = () => {
   if (cityPts) return cityPts;
   const L: number[] = [];
+  const LI: number[] = [];
   const add = (u: number, v: number, bright: number, local: boolean) => {
     const du = u - CC[0];
     const dv = v - CC[1];
@@ -50,7 +53,7 @@ const city = () => {
     const core = clamp(1 - r / R);
     const h = hash(u * 0.0131 + v * 0.0071);
     const c = local ? (h < 0.82 ? 0 : h < 0.95 ? 1 : 3) : h < 0.45 ? 1 : h < 0.75 ? 0 : 2;
-    L.push(u, v, 8, bright * (0.4 + 0.6 * core) * (0.75 + 0.25 * hash(h * 91)), c);
+    (Math.hypot(u, v) < NEAR_R - 60 ? LI : L).push(u, v, 8, bright * (0.4 + 0.6 * core) * (0.75 + 0.25 * hash(h * 91)), c);
   };
   for (let k = -16; k <= 16; k++)
     for (let t = -13000; t <= 13000; t += 38) {
@@ -75,6 +78,7 @@ const city = () => {
     L.push(u, v, 30, 0.35 + 0.4 * r(), r() < 0.6 ? 1 : 2);
   }
   cityPts = makePts(L);
+  cityIn = makePts(LI);
   return cityPts;
 };
 
@@ -87,20 +91,32 @@ const region = () => {
   const r = rng(4242);
   const L: number[] = [];
   // the city itself as a blob, for when its street grid is sub-pixel
-  for (let q = 0; q < 1400; q++) {
+  for (let q = 0; q < 3200; q++) {
     const a = r() * Math.PI * 2;
     const d = 5200 * Math.sqrt(-2 * Math.log(1 - r() * 0.999)) * 0.8;
-    L.push(CC[0] + Math.cos(a) * d, CC[1] + Math.sin(a) * d, 0, 0.5 + 0.5 * r(), r() < 0.7 ? 0 : 1);
+    L.push(CC[0] + Math.cos(a) * d, CC[1] + Math.sin(a) * d, 0, 0.6 + 0.4 * r(), r() < 0.6 ? 0 : 1);
   }
-  for (let i = 0; i < 8000; i++) {
+  // suburbs and satellite villages thinning out around the city
+  for (let q = 0; q < 2600; q++) {
+    const a = r() * Math.PI * 2;
+    const d = 7000 - 11000 * Math.log(1 - r() * 0.995);
+    const sx = CC[0] + Math.cos(a) * d;
+    const sy = CC[1] + Math.sin(a) * d;
+    const cl = 1 + Math.floor(r() * 4);
+    for (let k = 0; k < cl; k++) L.push(sx + (r() - 0.5) * 600, sy + (r() - 0.5) * 600, 0, (0.35 + 0.5 * r()) * Math.exp(-(d - 7000) / 40000), r() < 0.8 ? 0 : 1);
+  }
+  for (let i = 0; i < 11000; i++) {
     const ang = r() * Math.PI * 2;
-    const dist = 18000 + Math.pow(r(), 0.75) * 3.4e6;
-    const u = Math.cos(ang) * dist;
-    const v = Math.sin(ang) * dist;
+    // first 5000: log-uniform in distance (15 km .. 800 km) so every zoom level has the same richness
+    const nearT = i < 4000;
+    const dist = nearT ? 28000 * Math.pow(800 / 28, r()) : 8e5 + Math.pow(r(), 0.75) * 2.6e6;
+    const u = (nearT ? CC[0] : 0) + Math.cos(ang) * dist;
+    const v = (nearT ? CC[1] : 0) + Math.sin(ang) * dist;
     const accept = r();
-    const big = r() < 0.05;
-    const n = big ? 200 + Math.floor(r() * 350) : 4 + Math.floor(r() * 20);
-    const sig = big ? 4500 + r() * 6000 : 600 + r() * 2000;
+    const big = r() < (nearT ? 0.04 : 0.05);
+    const sc = nearT ? clamp(dist / 120000, 0.35, 1.4) : 1;
+    const n = big ? 200 + Math.floor(r() * 350) : 6 + Math.floor(r() * 26);
+    const sig = (big ? 4000 + r() * 5000 : 500 + r() * 1800) * (nearT ? Math.sqrt(sc) : 1);
     const [X, Y, Z] = onEarth(u, v, 0);
     const n0 = X / R_EARTH;
     const n2 = Z / R_EARTH;
@@ -110,6 +126,7 @@ const region = () => {
     if (land < 0.003) continue;
     const coast = land < 0.03 ? 1 : 0.75;
     TOWNS.push(u, v, sig, coast * Math.sqrt(n) / 26);
+    if (nearT) LINKN.push(u, v, big ? 1 : 0);
     for (let q = 0; q < n; q++) {
       const a2 = r() * Math.PI * 2;
       const d2 = sig * Math.sqrt(-2 * Math.log(1 - r() * 0.999));
@@ -117,6 +134,7 @@ const region = () => {
     }
   }
   regionPts = makePts(L);
+  LINKN.push(CC[0], CC[1], 1);
   TOWNS.push(CC[0], CC[1], 6000, 1.6);
   const n = TOWNS.length / 4;
   townW = { x: new Float64Array(n), y: new Float64Array(n), z: new Float64Array(n), s: new Float32Array(n), w: new Float32Array(n), n };
@@ -129,6 +147,92 @@ const region = () => {
     townW.w[i] = TOWNS[i * 4 + 3];
   }
   return regionPts;
+};
+
+const LINKN: number[] = [];
+type Links = { a: Float64Array; b: Float64Array; k: Uint8Array; n: number };
+let links: Links | null = null;
+/** Highways between neighbouring towns (each town to its 2 nearest neighbours). */
+const linkSet = () => {
+  if (links) return links;
+  region();
+  const n = LINKN.length / 3;
+  const A: number[] = [];
+  const B: number[] = [];
+  const K: number[] = [];
+  const seen = new Set<number>();
+  for (let i = 0; i < n; i++) {
+    const ui = LINKN[i * 3];
+    const vi = LINKN[i * 3 + 1];
+    let b1 = -1;
+    let b2 = -1;
+    let d1 = Infinity;
+    let d2 = Infinity;
+    for (let j = 0; j < n; j++) {
+      if (j === i) continue;
+      const d = Math.hypot(LINKN[j * 3] - ui, LINKN[j * 3 + 1] - vi);
+      if (d < d1) {
+        d2 = d1;
+        b2 = b1;
+        d1 = d;
+        b1 = j;
+      } else if (d < d2) {
+        d2 = d;
+        b2 = j;
+      }
+    }
+    for (const j of [b1, b2]) {
+      if (j < 0) continue;
+      const key = Math.min(i, j) * 100000 + Math.max(i, j);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const uj = LINKN[j * 3];
+      const vj = LINKN[j * 3 + 1];
+      const mid = onEarth((ui + uj) / 2, (vi + vj) / 2, 0);
+      if (landAt(mid[0], mid[1] - R_EARTH - 1.9, mid[2]) < 0) continue;
+      A.push(...onEarth(ui, vi, 0));
+      B.push(...onEarth(uj, vj, 0));
+      K.push(LINKN[i * 3 + 2] + LINKN[j * 3 + 2] > 0 ? 1 : 0);
+    }
+  }
+  links = { a: Float64Array.from(A), b: Float64Array.from(B), k: Uint8Array.from(K), n: K.length };
+  return links;
+};
+
+const highwayWeb = (g: G, c: Cam, alpha: number) => {
+  if (alpha <= 0.01) return;
+  const L = linkSet();
+  const paths = [new Path2D(), new Path2D()];
+  const pr = (X: number, Y: number, Z: number): [number, number] | null => {
+    const x = X - c.x;
+    const y = Y - c.y;
+    const z = Z - c.z;
+    const x1 = x * c.cyw - z * c.syw;
+    const z1 = x * c.syw + z * c.cyw;
+    const z2 = y * c.sp + z1 * c.cp;
+    if (z2 <= c.D * 0.01) return null;
+    const s = 1500 / z2;
+    return [960 + x1 * s, 540 + (y * c.cp - z1 * c.sp) * s];
+  };
+  for (let i = 0; i < L.n; i++) {
+    const p = pr(L.a[i * 3], L.a[i * 3 + 1], L.a[i * 3 + 2]);
+    const q = pr(L.b[i * 3], L.b[i * 3 + 1], L.b[i * 3 + 2]);
+    if (!p || !q) continue;
+    if ((p[0] < 0 && q[0] < 0) || (p[0] > 1920 && q[0] > 1920) || (p[1] < 0 && q[1] < 0) || (p[1] > 1080 && q[1] > 1080)) continue;
+    if (Math.hypot(q[0] - p[0], q[1] - p[1]) < 2) continue;
+    paths[L.k[i]].moveTo(p[0], p[1]);
+    paths[L.k[i]].lineTo(q[0], q[1]);
+  }
+  g.save();
+  g.globalCompositeOperation = "lighter";
+  g.lineCap = "round";
+  g.strokeStyle = `rgba(255,150,70,${0.13 * alpha})`;
+  g.lineWidth = 1;
+  g.stroke(paths[0]);
+  g.strokeStyle = `rgba(255,170,90,${0.22 * alpha})`;
+  g.lineWidth = 1.4;
+  g.stroke(paths[1]);
+  g.restore();
 };
 
 /** Soft bloom around every town so the region reads like night-time satellite imagery. */
@@ -171,10 +275,7 @@ const drawPts = (g: G, c: Cam, p: Pts, alpha: number, sizeM: number, minPx: numb
     const sy = 540 + (y * c.cp - z1 * c.sp) * s;
     if (sy < -10 || sy > 1090) continue;
     const px = sizeM * s;
-    if (px > maxPx * 1.6) {
-      if (big.length < 30000) big.push(sx, sy, Math.min(13, px * 0.5), p.b[i], p.c[i]);
-      continue;
-    }
+    if (px > maxPx * 1.6 && big.length < 30000) big.push(sx, sy, Math.min(10, px * 0.35), p.b[i], p.c[i]);
     const k = p.c[i];
     bx[k].push(sx);
     by[k].push(sy);
@@ -196,7 +297,7 @@ const drawPts = (g: G, c: Cam, p: Pts, alpha: number, sizeM: number, minPx: numb
     }
   }
   g.globalAlpha = 1;
-  for (let i = 0; i < big.length; i += 5) glow(g, big[i], big[i + 1], big[i + 2], COLS[big[i + 4]], alpha * big[i + 3]);
+  for (let i = 0; i < big.length; i += 5) glow(g, big[i], big[i + 1], big[i + 2], COLS[big[i + 4]], alpha * big[i + 3] * 0.3, 0.05);
   g.restore();
 };
 
@@ -377,94 +478,82 @@ const powerLines = (g: G, c: Cam, f: number, alpha: number) => {
   g.restore();
 };
 
-// ------------------------------------------------------------------ buildings in the blocks around the campus
-type Bld = { u: number; v: number; w: number; d: number; h: number; id: number };
-let blds: Bld[] | null = null;
-const buildings = () => {
-  if (blds) return blds;
-  const out: Bld[] = [];
-  for (let i = -14; i <= 14; i++)
-    for (let j = -14; j <= 14; j++) {
-      const bu = CC[0] + Math.round((CAMPUS_MID[0] - CC[0]) / 220) * 220 + i * 220 + 110;
-      const bv = CC[1] + Math.round((CAMPUS_MID[1] - CC[1]) / 220) * 220 + j * 220 + 110;
-      const id = (i + 20) * 61 + j + 20;
-      if (Math.hypot(bu - CAMPUS_MID[0], bv - CAMPUS_MID[1]) > 2900) continue;
-      if (hash(id * 1.37) < 0.3) continue;
-      if (Math.abs(bv - riverV(bu)) < 260) continue;
-      const w = 60 + hash(id * 2.1) * 100;
-      const d = 60 + hash(id * 3.3) * 100;
-      if (inCampus(bu, bv, Math.max(w, d) / 2 + 10)) continue;
-      const toCore = clamp(1 - Math.hypot(bu - CC[0], bv - CC[1]) / 7000);
-      const h = 8 + 26 * hash(id * 4.7) + 110 * toCore * toCore * hash(id * 5.9);
-      out.push({ u: bu + (hash(id * 6.1) - 0.5) * 20, v: bv + (hash(id * 7.3) - 0.5) * 20, w, d, h, id });
+// ------------------------------------------------------------------ continuous lit street lines (whole city)
+type Lines = { a: Float64Array; b: Float64Array; k: Uint8Array; n: number };
+let lines: Lines | null = null;
+const streetSegs = () => {
+  if (lines) return lines;
+  const A: number[] = [];
+  const B: number[] = [];
+  const K: number[] = [];
+  const road = (vert: boolean, c: number, major: boolean) => {
+    const N = 64;
+    for (let i = 0; i < N; i++) {
+      const t0 = -13000 + (26000 * i) / N;
+      const t1 = -13000 + (26000 * (i + 1)) / N;
+      const tm = (t0 + t1) / 2;
+      const [um, vm] = vert ? [c, CC[1] + tm] : [CC[0] + tm, c];
+      const du = um - CC[0];
+      const dv = vm - CC[1];
+      const r = Math.hypot(du, dv);
+      const R = radiusAt(Math.atan2(dv, du));
+      if (r > R) continue;
+      if (!major && Math.abs(vm - riverV(um)) < 150) continue;
+      if (!major && hash(c * 0.0137 + i * 7.31) < 0.18) continue;
+      const core = clamp(1 - r / R);
+      const k = Math.min(3, Math.floor(core * 3.2 + (major ? 1 : 0)));
+      const p0 = vert ? onEarth(c, CC[1] + t0, 4) : onEarth(CC[0] + t0, c, 4);
+      const p1 = vert ? onEarth(c, CC[1] + t1, 4) : onEarth(CC[0] + t1, c, 4);
+      A.push(...p0);
+      B.push(...p1);
+      K.push(k);
     }
-  blds = out;
-  return out;
+  };
+  for (let k = -16; k <= 16; k++) {
+    road(true, CC[0] + k * 880, true);
+    road(false, CC[1] + k * 880, true);
+  }
+  for (let k = -60; k <= 60; k++) {
+    if (k % 4 === 0) continue;
+    road(true, CC[0] + k * 220, false);
+    road(false, CC[1] + k * 220, false);
+  }
+  lines = { a: Float64Array.from(A), b: Float64Array.from(B), k: Uint8Array.from(K), n: K.length };
+  return lines;
 };
 
-const drawBuildings = (g: G, c: Cam, f: number, alpha: number) => {
+const streetLines = (g: G, c: Cam, alpha: number) => {
   if (alpha <= 0.01) return;
-  const list = buildings()
-    .map((b) => ({ b, p: proj(c, b.u, 1.9 - b.h / 2, -b.v, 0.001) }))
-    .filter((x) => x.p && x.p.x > -300 && x.p.x < 2220 && x.p.y > -300 && x.p.y < 1380)
-    .sort((a, b) => b.p!.z - a.p!.z);
+  const L = streetSegs();
+  const paths = [new Path2D(), new Path2D(), new Path2D(), new Path2D()];
+  const pr = (X: number, Y: number, Z: number): [number, number] | null => {
+    const x = X - c.x;
+    const y = Y - c.y;
+    const z = Z - c.z;
+    const x1 = x * c.cyw - z * c.syw;
+    const z1 = x * c.syw + z * c.cyw;
+    const z2 = y * c.sp + z1 * c.cp;
+    if (z2 <= c.D * 0.01) return null;
+    const s = 1500 / z2;
+    return [960 + x1 * s, 540 + (y * c.cp - z1 * c.sp) * s];
+  };
+  for (let i = 0; i < L.n; i++) {
+    const p = pr(L.a[i * 3], L.a[i * 3 + 1], L.a[i * 3 + 2]);
+    const q = pr(L.b[i * 3], L.b[i * 3 + 1], L.b[i * 3 + 2]);
+    if (!p || !q) continue;
+    if ((p[0] < 0 && q[0] < 0) || (p[0] > 1920 && q[0] > 1920) || (p[1] < 0 && q[1] < 0) || (p[1] > 1080 && q[1] > 1080)) continue;
+    const P2 = paths[L.k[i]];
+    P2.moveTo(p[0], p[1]);
+    P2.lineTo(q[0], q[1]);
+  }
+  const s0 = 1500 / c.D;
   g.save();
-  g.globalAlpha = alpha;
-  for (const { b, p } of list) {
-    const px = b.w * p!.s;
-    if (px < 1.5) continue;
-    const u0 = b.u - b.w / 2;
-    const u1 = b.u + b.w / 2;
-    const v0 = b.v - b.d / 2;
-    const v1 = b.v + b.d / 2;
-    const y0 = 1.9 - b.h;
-    const cu = c.x;
-    const cv = -c.z;
-    const face = (pts: [number, number, number][], col: string, lit: number, roof: boolean) => {
-      const ps = pts.map(([u, y, v]) => proj(c, u, y, -v, 0.001));
-      if (ps.some((q) => !q)) return;
-      g.beginPath();
-      g.moveTo(ps[0]!.x, ps[0]!.y);
-      for (let i = 1; i < 4; i++) g.lineTo(ps[i]!.x, ps[i]!.y);
-      g.closePath();
-      g.fillStyle = col;
-      g.fill();
-      if (roof) {
-        g.strokeStyle = "rgba(120,150,190,0.35)";
-        g.lineWidth = 1;
-        g.stroke();
-        return;
-      }
-      if (px > 5) {
-        g.save();
-        g.globalCompositeOperation = "lighter";
-        const nx = Math.max(2, Math.min(7, Math.round(px / 9)));
-        const ny = Math.max(1, Math.min(9, Math.round(b.h / 7)));
-        const ws = clamp(px / 26, 1.2, 3);
-        for (let i = 0; i < nx; i++)
-          for (let j = 0; j < ny; j++) {
-            if (hash(b.id * 13.1 + i * 3.7 + j * 9.1 + lit) < 0.5) continue;
-            const s = (i + 0.5) / nx;
-            const t = (j + 0.5) / ny;
-            const ax = ps[0]!.x + (ps[1]!.x - ps[0]!.x) * s;
-            const ay = ps[0]!.y + (ps[1]!.y - ps[0]!.y) * s;
-            const bx = ps[3]!.x + (ps[2]!.x - ps[3]!.x) * s;
-            const by = ps[3]!.y + (ps[2]!.y - ps[3]!.y) * s;
-            g.fillStyle = hash(b.id + i * 0.3 + j * 0.7) < 0.72 ? "rgba(255,196,120,0.85)" : "rgba(200,225,255,0.8)";
-            g.fillRect(ax + (bx - ax) * t - ws / 2, ay + (by - ay) * t - ws / 2, ws, ws);
-          }
-        g.restore();
-      }
-    };
-    if (cu < u0) face([[u0, y0, v1], [u0, y0, v0], [u0, 1.9, v0], [u0, 1.9, v1]], "#0b0f16", 1, false);
-    if (cu > u1) face([[u1, y0, v0], [u1, y0, v1], [u1, 1.9, v1], [u1, 1.9, v0]], "#0b0f16", 2, false);
-    if (cv > v1) face([[u0, y0, v1], [u1, y0, v1], [u1, 1.9, v1], [u0, 1.9, v1]], "#0f141c", 3, false);
-    if (cv < v0) face([[u1, y0, v0], [u0, y0, v0], [u0, 1.9, v0], [u1, 1.9, v0]], "#0f141c", 4, false);
-    if (c.y < y0) face([[u0, y0, v0], [u1, y0, v0], [u1, y0, v1], [u0, y0, v1]], "#151b25", 0, true);
-    if (b.h > 60) {
-      const t = proj(c, b.u, y0 - 2, -b.v, 0.001);
-      if (t) glow(g, t.x, t.y, clamp(6 * t.s, 2, 8), C.red, (Math.floor(f / 20 + b.id) % 2 ? 0.8 : 0.2) * alpha);
-    }
+  g.globalCompositeOperation = "lighter";
+  g.lineCap = "round";
+  for (let k = 0; k < 4; k++) {
+    g.strokeStyle = `rgba(255,160,80,${alpha * (0.03 + (0.055 * k * k) / 3)})`;
+    g.lineWidth = clamp(14 * s0, 0.8, 3);
+    g.stroke(paths[k]);
   }
   g.restore();
 };
@@ -474,7 +563,7 @@ const drawBuildings = (g: G, c: Cam, f: number, alpha: number) => {
 export const drawCity = (g: G, c: Cam, f: number) => {
   const D = c.D;
   const cityA = clamp((D - 60) / 300) * (1 - clamp((D - 3.5e4) / 1.2e5));
-  const regA = clamp((D - 8000) / 30000) * (1 - clamp((D - 7e6) / 1e7));
+  const regA = clamp((D - 8000) / 30000) * (1 - clamp((D - 2.4e6) / 4e6));
   if (cityA <= 0 && regA <= 0) return;
   if (cityA > 0) {
     // warm sky-glow over the city
@@ -488,12 +577,15 @@ export const drawCity = (g: G, c: Cam, f: number) => {
     }
   }
   if (regA > 0) {
-    townBloom(g, c, regA);
+    highwayWeb(g, c, regA * (1 - clamp((D - 1.5e6) / 2.5e6)));
+    townBloom(g, c, regA * (1 - clamp((D - 8e5) / 1.4e6)));
     drawPts(g, c, region(), regA * 1.25, 260, 1, 2.4);
   }
   if (cityA > 0) {
-    drawBuildings(g, c, f, clamp((D - 120) / 250) * (1 - clamp((D - 5000) / 7000)));
     drawPts(g, c, city(), cityA, 24, 1, 3.2);
+    drawPts(g, c, cityIn!, cityA * clamp((D - 3200) / 3600), 24, 1, 3.2);
+    streetLines(g, c, cityA * clamp((D - 900) / 2600));
+    drawNear(g, c, f);
     highways(g, c, f, cityA * (1 - clamp((D - 6e4) / 8e4)));
     powerLines(g, c, f, cityA * (1 - clamp((D - 8e4) / 1e5)));
   }
