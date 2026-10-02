@@ -4,6 +4,7 @@ import { Canvas, glow, mix, withAlpha } from "../lib/canvas";
 import { C, FONT_CN, FONT_MONO } from "../lib/theme";
 import { clamp, ease, hash, lerp, noise1, prog, rng, shake, sumShake, TAU } from "../lib/math";
 import { Captions } from "../components/Caption";
+import { GradientText } from "../components/GradientText";
 import { Flash } from "../components/Hud";
 import { cue, sceneDuration, ticks } from "../timeline";
 
@@ -1649,43 +1650,42 @@ const GapText: React.FC<{ ink?: string; dx?: number }> = ({ ink, dx = 0 }) => {
             差距：约
           </span>
           <span style={{ position: "relative", display: "inline-block" }}>
-            <span
-              style={
-                ink
-                  ? { ...big, color: ink }
-                  : {
-                      ...big,
-                      background: `linear-gradient(175deg, #ffffff 0%, #fff6d8 22%, ${C.gold} 42%, ${C.ember} 66%, ${C.magenta} 100%)`,
-                      backgroundSize: "100% 200%",
-                      backgroundPosition: `0 ${shimmer > 100 ? 200 - shimmer : shimmer}%`,
-                      WebkitBackgroundClip: "text",
-                      backgroundClip: "text",
-                      color: "transparent",
-                      filter: `drop-shadow(0 0 ${24 + 18 * glowK}px rgba(255,90,40,${0.75 + 0.25 * glowK})) drop-shadow(0 6px 14px rgba(0,0,0,0.9))`,
-                    }
-              }
-            >
-              2亿亿
-            </span>
-            {sheenOn ? (
-              // one specular band sweeps across the hot text while it holds
-              <span
-                style={{
-                  ...big,
-                  position: "absolute",
-                  left: 0,
-                  top: 0,
-                  background: "linear-gradient(100deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0) 42%, rgba(255,255,255,0.92) 50%, rgba(255,255,255,0) 58%, rgba(255,255,255,0) 100%)",
-                  backgroundSize: "300% 100%",
-                  backgroundPosition: `${100 - 100 * ease.inOutSine(sheenP)}% 0`,
-                  WebkitBackgroundClip: "text",
-                  backgroundClip: "text",
-                  color: "transparent",
-                }}
-              >
-                2亿亿
-              </span>
-            ) : null}
+            {ink ? (
+              <span style={{ ...big, color: ink }}>2亿亿</span>
+            ) : (
+              <GradientText
+                id="cmp-gap"
+                text="2亿亿"
+                font={{ fontFamily: FONT_CN, fontWeight: 900, fontSize: 264, letterSpacing: "0.01em" }}
+                layers={[
+                  {
+                    // hot gradient twice the text height, drifting up and down (was background-size 100% 200%)
+                    angle: 175,
+                    span: 2,
+                    offset: -(shimmer > 100 ? 200 - shimmer : shimmer) / 100,
+                    stops: [[0, "#ffffff"], [0.22, "#fff6d8"], [0.42, C.gold], [0.66, C.ember], [1, C.magenta]],
+                    filter: `drop-shadow(0 0 ${24 + 18 * glowK}px rgba(255,90,40,${0.75 + 0.25 * glowK})) drop-shadow(0 6px 14px rgba(0,0,0,0.9))`,
+                  },
+                  ...(sheenOn
+                    ? [
+                        {
+                          // one specular band sweeps across the hot text while it holds (was background-size 300%)
+                          angle: 100,
+                          span: 3,
+                          offset: (-2 * (100 - 100 * ease.inOutSine(sheenP))) / 100,
+                          stops: [
+                            [0, "#ffffff", 0],
+                            [0.42, "#ffffff", 0],
+                            [0.5, "#ffffff", 0.92],
+                            [0.58, "#ffffff", 0],
+                            [1, "#ffffff", 0],
+                          ] as [number, string, number][],
+                        },
+                      ]
+                    : []),
+                ]}
+              />
+            )}
           </span>
           <span style={{ fontFamily: FONT_CN, fontWeight: 900, fontSize: 96, color: ink ?? "#fff", textShadow: ink ? undefined : `0 0 30px ${C.magenta}, 0 4px 16px #000` }}>倍</span>
         </div>

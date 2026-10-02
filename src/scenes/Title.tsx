@@ -4,6 +4,7 @@ import { Canvas, glow, mix, withAlpha } from "../lib/canvas";
 import { C, FONT_CN, FONT_MONO } from "../lib/theme";
 import { clamp, ease, hash, prog, shake, TAU } from "../lib/math";
 import { Flash } from "../components/Hud";
+import { GradientText } from "../components/GradientText";
 import { cue, sceneDuration } from "../timeline";
 
 const RISER = cue("title", "riser");
@@ -147,19 +148,12 @@ const TitleText: React.FC = () => {
           }}
         >
           从真空管到
-          <span
-            style={{
-              fontFamily: FONT_MONO,
-              letterSpacing: 0,
-              background: `linear-gradient(100deg, ${C.gold}, ${C.magenta} 50%, ${C.cyan})`,
-              WebkitBackgroundClip: "text",
-              backgroundClip: "text",
-              color: "transparent",
-              filter: `drop-shadow(0 0 22px ${C.magenta})`,
-            }}
-          >
-            AI
-          </span>
+          <GradientText
+            id="title-ai"
+            text="AI"
+            font={{ fontFamily: FONT_MONO, fontWeight: 900, fontSize: 168, letterSpacing: 0 }}
+            layers={[{ angle: 100, stops: [[0, C.gold], [0.5, C.magenta], [1, C.cyan]], filter: `drop-shadow(0 0 22px ${C.magenta})` }]}
+          />
         </div>
       </div>
       <div

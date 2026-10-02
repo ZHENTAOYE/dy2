@@ -5,6 +5,7 @@ import { C, FONT_CN, FONT_MONO } from "../lib/theme";
 import { clamp, ease, hash, lerp, noise1, prog, shake, sumShake, TAU } from "../lib/math";
 import type { Cam } from "../lib/three";
 import { Captions } from "../components/Caption";
+import { GradDef } from "../components/GradientText";
 import { ChapterCard, Flash } from "../components/Hud";
 import {
   camOf,
@@ -1762,6 +1763,8 @@ const FinalField: React.FC = () => (
   />
 );
 
+const TITLE_FS = 168;
+
 const FinalTitle: React.FC = () => {
   const frame = useCurrentFrame();
   const t = frame - T0;
@@ -1774,58 +1777,73 @@ const FinalTitle: React.FC = () => {
   const lineT = ease.inOutCubic(prog(frame, T0 + 26, T0 + 70));
   const sweep = prog(frame, T0 + 80, T0 + 120);
   const ig = frame >= F_AI ? Math.exp(-(frame - F_AI) / 16) : 0;
-  const base: React.CSSProperties = {
-    position: "absolute",
-    inset: 0,
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    fontFamily: FONT_CN,
-    fontWeight: 900,
-    fontSize: 168,
-    letterSpacing: "0.06em",
-  };
-  const words = (
-    <>
-      从真空管到<span style={{ fontFamily: FONT_MONO, letterSpacing: 0 }}>AI</span>
-    </>
+  // The title is drawn as SVG text (not CSS background-clip, which Chrome can stop clipping in long renders).
+  // Geometry is exact by font design: CJK ideographs advance 1em (+0.06em spacing), JetBrains Mono 0.6em.
+  const cnW = 5 * TITLE_FS * 1.06;
+  const aiW = 2 * TITLE_FS * 0.6;
+  const x0 = 960 - (cnW + aiW) / 2;
+  const xAi = x0 + cnW;
+  const line = (cn: string, ai: string, key: string, style: React.CSSProperties, defs?: React.ReactNode) => (
+    <svg key={key} width={1920} height={1080} style={{ position: "absolute", left: 0, top: 0, overflow: "visible", ...style }}>
+      {defs ? <defs>{defs}</defs> : null}
+      <text x={x0} y={540} dominantBaseline="central" fill={cn} style={{ fontFamily: FONT_CN, fontWeight: 900, fontSize: TITLE_FS, letterSpacing: "0.06em" }}>
+        从真空管到
+      </text>
+      <text x={xAi} y={540} dominantBaseline="central" fill={ai} style={{ fontFamily: FONT_MONO, fontWeight: 900, fontSize: TITLE_FS }}>
+        AI
+      </text>
+    </svg>
   );
+  // the light sweep: CSS linear-gradient(105deg) over the whole line box, extended to 3x its length so the
+  // band can start before and end after the text
+  const sweepQ = sweep * 140 - 30;
+  const sd = { x: Math.sin((105 * Math.PI) / 180), y: -Math.cos((105 * Math.PI) / 180) };
+  const sL = (cnW + aiW) * Math.abs(sd.x) + 243 * Math.abs(sd.y);
+  const sx = 960 - (sd.x * sL) / 2;
+  const sy = 540 - (sd.y * sL) / 2;
+  const so = (q: number) => (q / 100 + 1) / 3;
   return (
     <AbsoluteFill>
       <div style={{ position: "absolute", inset: 0, transform: `translateY(${FCY - 540}px) scale(${sc})`, filter: blur > 0.2 ? `blur(${blur}px)` : undefined }}>
-        <div style={{ ...base, color: C.red, transform: `translateX(${-ab}px)`, mixBlendMode: "screen", opacity: 0.85 * clamp(ab / 5) }}>{words}</div>
-        <div style={{ ...base, color: C.cyan, transform: `translateX(${ab}px)`, mixBlendMode: "screen", opacity: 0.85 * clamp(ab / 5) }}>{words}</div>
-        <div style={{ ...base, color: "#fff", textShadow: `0 0 30px ${C.amber}, 0 0 80px rgba(255,120,40,0.55), 0 4px 18px rgba(0,0,0,0.6)` }}>
-          从真空管到
-          <span
-            style={{
-              fontFamily: FONT_MONO,
-              letterSpacing: 0,
-              background: `linear-gradient(100deg, ${mix(C.gold, "#ffffff", 0.6 * ig)}, ${mix(C.magenta, "#ffffff", 0.5 * ig)} 50%, ${mix(C.cyan, "#ffffff", 0.5 * ig)})`,
-              WebkitBackgroundClip: "text",
-              backgroundClip: "text",
-              color: "transparent",
-              textShadow: "none",
-              filter: `drop-shadow(0 0 ${18 + 30 * ig}px ${withAlpha(C.magenta, 0.85)}) drop-shadow(0 0 4px rgba(0,0,0,0.6))`,
+        {ab > 0.05
+          ? [
+              line(C.red, C.red, "r", { transform: `translateX(${-ab}px)`, mixBlendMode: "screen", opacity: 0.85 * clamp(ab / 5) }),
+              line(C.cyan, C.cyan, "c", { transform: `translateX(${ab}px)`, mixBlendMode: "screen", opacity: 0.85 * clamp(ab / 5) }),
+            ]
+          : null}
+        {line("#fff", "transparent", "cn", {
+          filter: `drop-shadow(0 0 30px ${C.amber}) drop-shadow(0 0 80px rgba(255,120,40,0.55)) drop-shadow(0 4px 18px rgba(0,0,0,0.6))`,
+        })}
+        {line(
+          "transparent",
+          "url(#fin-ai)",
+          "ai",
+          { filter: `drop-shadow(0 0 ${18 + 30 * ig}px ${withAlpha(C.magenta, 0.85)}) drop-shadow(0 0 4px rgba(0,0,0,0.6))` },
+          <GradDef
+            id="fin-ai"
+            layer={{
+              angle: 100,
+              stops: [
+                [0, mix(C.gold, "#ffffff", 0.6 * ig)],
+                [0.5, mix(C.magenta, "#ffffff", 0.5 * ig)],
+                [1, mix(C.cyan, "#ffffff", 0.5 * ig)],
+              ],
             }}
-          >
-            AI
-          </span>
-        </div>
-        {sweep > 0 && sweep < 1 ? (
-          <div
-            style={{
-              ...base,
-              color: "transparent",
-              background: `linear-gradient(105deg, transparent ${sweep * 140 - 30}%, rgba(255,255,255,0.85) ${sweep * 140 - 20}%, transparent ${sweep * 140 - 10}%)`,
-              WebkitBackgroundClip: "text",
-              backgroundClip: "text",
-              mixBlendMode: "screen",
-            }}
-          >
-            {words}
-          </div>
-        ) : null}
+          />,
+        )}
+        {sweep > 0 && sweep < 1
+          ? line(
+              "url(#fin-sweep)",
+              "url(#fin-sweep)",
+              "sw",
+              { mixBlendMode: "screen" },
+              <linearGradient id="fin-sweep" gradientUnits="userSpaceOnUse" x1={sx - sd.x * sL} y1={sy - sd.y * sL} x2={sx + 2 * sd.x * sL} y2={sy + 2 * sd.y * sL}>
+                <stop offset={so(sweepQ)} stopColor="#fff" stopOpacity={0} />
+                <stop offset={so(sweepQ + 10)} stopColor="#fff" stopOpacity={0.85} />
+                <stop offset={so(sweepQ + 20)} stopColor="#fff" stopOpacity={0} />
+              </linearGradient>,
+            )
+          : null}
       </div>
       <div
         style={{
