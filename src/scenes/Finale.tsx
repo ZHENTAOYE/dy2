@@ -5,7 +5,7 @@ import { C, FONT_CN, FONT_MONO } from "../lib/theme";
 import { clamp, ease, hash, lerp, noise1, prog, shake, sumShake, TAU } from "../lib/math";
 import type { Cam } from "../lib/three";
 import { Captions } from "../components/Caption";
-import { GradDef } from "../components/GradientText";
+import { GlyphPaths, GradDef, glyphRun } from "../components/GradientText";
 import { ChapterCard, Flash } from "../components/Hud";
 import {
   camOf,
@@ -1764,6 +1764,8 @@ const FinalField: React.FC = () => (
 );
 
 const TITLE_FS = 168;
+/** Baseline of the closing title in its 1920x1080 layer: centres the CJK em box on y = 540. */
+const BASE_Y = 540 + 0.38 * TITLE_FS;
 
 const FinalTitle: React.FC = () => {
   const frame = useCurrentFrame();
@@ -1777,30 +1779,41 @@ const FinalTitle: React.FC = () => {
   const lineT = ease.inOutCubic(prog(frame, T0 + 26, T0 + 70));
   const sweep = prog(frame, T0 + 80, T0 + 120);
   const ig = frame >= F_AI ? Math.exp(-(frame - F_AI) / 16) : 0;
-  // The title is drawn as SVG text (not CSS background-clip, which Chrome can stop clipping in long renders).
-  // Geometry is exact by font design: CJK ideographs advance 1em (+0.06em spacing), JetBrains Mono 0.6em.
-  const cnW = 5 * TITLE_FS * 1.06;
-  const aiW = 2 * TITLE_FS * 0.6;
+  // The title is drawn as vector glyph outlines: Chrome mangles large gradient-filled text in long renders
+  // (see GradientText.tsx). All layers share one layout, so the chromatic copies, glow and sweep line up exactly.
+  const cnRun = glyphRun("cn900", "从真空管到", TITLE_FS, 0.06);
+  const aiRun = glyphRun("mono800", "AI", TITLE_FS);
+  const cnW = cnRun.width;
+  const aiW = aiRun.width;
   const x0 = 960 - (cnW + aiW) / 2;
   const xAi = x0 + cnW;
-  const line = (cn: string, ai: string, key: string, style: React.CSSProperties, defs?: React.ReactNode) => (
+  const top = BASE_Y - cnRun.ascent;
+  const boxH = cnRun.ascent + cnRun.descent;
+  const clip = (key: string) => (
+    <clipPath id={`fin-clip-${key}`}>
+      <GlyphPaths run={cnRun} x={x0} y={BASE_Y} />
+      <GlyphPaths run={aiRun} x={xAi} y={BASE_Y} />
+    </clipPath>
+  );
+  const line = (cn: string, ai: string, key: string, style: React.CSSProperties) => (
     <svg key={key} width={1920} height={1080} style={{ position: "absolute", left: 0, top: 0, overflow: "visible", ...style }}>
-      {defs ? <defs>{defs}</defs> : null}
-      <text x={x0} y={540} dominantBaseline="central" fill={cn} style={{ fontFamily: FONT_CN, fontWeight: 900, fontSize: TITLE_FS, letterSpacing: "0.06em" }}>
-        从真空管到
-      </text>
-      <text x={xAi} y={540} dominantBaseline="central" fill={ai} style={{ fontFamily: FONT_MONO, fontWeight: 900, fontSize: TITLE_FS }}>
-        AI
-      </text>
+      <GlyphPaths run={cnRun} x={x0} y={BASE_Y} fill={cn} />
+      <GlyphPaths run={aiRun} x={xAi} y={BASE_Y} fill={ai} />
+    </svg>
+  );
+  /** A gradient rectangle over [x, x+w] clipped to the title's glyphs. */
+  const gradRect = (key: string, x: number, w: number, defs: React.ReactNode, fill: string, style: React.CSSProperties) => (
+    <svg key={key} width={1920} height={1080} style={{ position: "absolute", left: 0, top: 0, overflow: "visible", ...style }}>
+      <defs>
+        {clip(key)}
+        {defs}
+      </defs>
+      <rect x={x} y={top} width={w} height={boxH} fill={fill} clipPath={`url(#fin-clip-${key})`} />
     </svg>
   );
   // the light sweep: CSS linear-gradient(105deg) over the whole line box, extended to 3x its length so the
   // band can start before and end after the text
   const sweepQ = sweep * 140 - 30;
-  const sd = { x: Math.sin((105 * Math.PI) / 180), y: -Math.cos((105 * Math.PI) / 180) };
-  const sL = (cnW + aiW) * Math.abs(sd.x) + 243 * Math.abs(sd.y);
-  const sx = 960 - (sd.x * sL) / 2;
-  const sy = 540 - (sd.y * sL) / 2;
   const so = (q: number) => (q / 100 + 1) / 3;
   return (
     <AbsoluteFill>
@@ -1814,11 +1827,10 @@ const FinalTitle: React.FC = () => {
         {line("#fff", "transparent", "cn", {
           filter: `drop-shadow(0 0 30px ${C.amber}) drop-shadow(0 0 80px rgba(255,120,40,0.55)) drop-shadow(0 4px 18px rgba(0,0,0,0.6))`,
         })}
-        {line(
-          "transparent",
-          "url(#fin-ai)",
+        {gradRect(
           "ai",
-          { filter: `drop-shadow(0 0 ${18 + 30 * ig}px ${withAlpha(C.magenta, 0.85)}) drop-shadow(0 0 4px rgba(0,0,0,0.6))` },
+          xAi,
+          aiW,
           <GradDef
             id="fin-ai"
             layer={{
@@ -1830,18 +1842,29 @@ const FinalTitle: React.FC = () => {
               ],
             }}
           />,
+          "url(#fin-ai)",
+          { filter: `drop-shadow(0 0 ${18 + 30 * ig}px ${withAlpha(C.magenta, 0.85)}) drop-shadow(0 0 4px rgba(0,0,0,0.6))` },
         )}
         {sweep > 0 && sweep < 1
-          ? line(
-              "url(#fin-sweep)",
-              "url(#fin-sweep)",
+          ? gradRect(
               "sw",
+              x0,
+              cnW + aiW,
+              <GradDef
+                id="fin-sweep"
+                layer={{
+                  angle: 105,
+                  span: 3,
+                  offset: -1,
+                  stops: [
+                    [so(sweepQ), "#ffffff", 0],
+                    [so(sweepQ + 10), "#ffffff", 0.85],
+                    [so(sweepQ + 20), "#ffffff", 0],
+                  ],
+                }}
+              />,
+              "url(#fin-sweep)",
               { mixBlendMode: "screen" },
-              <linearGradient id="fin-sweep" gradientUnits="userSpaceOnUse" x1={sx - sd.x * sL} y1={sy - sd.y * sL} x2={sx + 2 * sd.x * sL} y2={sy + 2 * sd.y * sL}>
-                <stop offset={so(sweepQ)} stopColor="#fff" stopOpacity={0} />
-                <stop offset={so(sweepQ + 10)} stopColor="#fff" stopOpacity={0.85} />
-                <stop offset={so(sweepQ + 20)} stopColor="#fff" stopOpacity={0} />
-              </linearGradient>,
             )
           : null}
       </div>

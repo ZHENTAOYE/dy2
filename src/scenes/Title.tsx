@@ -151,7 +151,8 @@ const TitleText: React.FC = () => {
           <GradientText
             id="title-ai"
             text="AI"
-            font={{ fontFamily: FONT_MONO, fontWeight: 900, fontSize: 168, letterSpacing: 0 }}
+            face="mono800"
+            fontSize={168}
             layers={[{ angle: 100, stops: [[0, C.gold], [0.5, C.magenta], [1, C.cyan]], filter: `drop-shadow(0 0 22px ${C.magenta})` }]}
           />
         </div>

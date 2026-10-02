@@ -1656,7 +1656,9 @@ const GapText: React.FC<{ ink?: string; dx?: number }> = ({ ink, dx = 0 }) => {
               <GradientText
                 id="cmp-gap"
                 text="2亿亿"
-                font={{ fontFamily: FONT_CN, fontWeight: 900, fontSize: 264, letterSpacing: "0.01em" }}
+                face="cn900"
+                fontSize={264}
+                letterSpacing={0.01}
                 layers={[
                   {
                     // hot gradient twice the text height, drifting up and down (was background-size 100% 200%)
