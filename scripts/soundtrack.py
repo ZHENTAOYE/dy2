@@ -141,6 +141,7 @@ CUE_SOUNDS = {
         "flood": [S("riser", lead=2.4, gain=0.55), S("rush", dur=3.5, gain=0.55)],
         "shatter": [S("shatter", gain=0.62), S("hit", size=0.6, gain=0.55)],
         "imagenet": [S("shimmer", gain=0.44), S("hit", size=0.55, gain=0.55)],
+        "lockin": [S("hit", size=0.5, gain=0.5), S("chime", gain=0.3)],  # the counter locks on 1400万
     },
     "alexnet": {
         "bars": [S("gen_bars", gain=0.32)],
@@ -156,6 +157,7 @@ CUE_SOUNDS = {
     },
     "transformer": {
         "attend": [S("shimmer", gain=0.4)],
+        "all": [S("pulse", gain=0.36), S("shimmer", dur=2.0, gain=0.3)],  # every token flares at once
         "parallel": [S("whoosh", dur=0.9, peak=0.3, gain=0.34), S("pulse", gain=0.42)],
         "generate": [S("blip", freq=1500, gain=0.26)],
         # the user counter lands on 1亿 at users+80 (Transformer.tsx LAND)
@@ -174,10 +176,14 @@ CUE_SOUNDS = {
                  S("crash", gain=0.3)],
         "earth": [S("whoosh", peak_at_cue=True, at=-2, peak=0.85, dur=2.2, gain=0.48), S("boom", size=1.15, gain=0.75),
                   S("shimmer", dur=5.0, gain=0.4)],
+        "network": [S("pulse", gain=0.34), S("shimmer", dur=2.5, gain=0.26)],   # light arcs span the globe
+        "chart": [S("blip", freq=1100, gain=0.3)],                                # the training-compute chart opens
+        "final": [S("boom", size=1.0, gain=0.78), S("crash", gain=0.3)],          # "上千万倍" slams in
     },
     "compare": {
         "zeros": [S("pulse", gain=0.5), S("rise_tone", to="gap", slow=True, gain=0.16)],
         "suffix": [S("hit", size=0.7, gain=0.62)],                       # "次 / 秒" lands
+        "ping": [S("blip", freq=2400, dec=0.08, gain=0.3)],                # the ENIAC ember pings the giant number
         "inhale": [S("suck", to="gap", gain=0.7)],                       # everything is sucked in
         "gap": [S("riser", lead=3.0, top=12500, gain=0.8), S("boom", size=1.95, metal=1.0, gain=1.25),
                 S("crash", gain=0.5)],                                   # THE biggest boom
@@ -214,14 +220,18 @@ SCENE_FALLBACK = {
 # Rhythmic series from a scene's "ticks" object (synths receive i = index, n = count).
 TICK_SOUNDS = {
     "neural": {"fire": S("fire", gain=0.42)},                      # the perceptron fires
-    "alexnet": {"bar": S("tick", freq=1300, dec=0.03, gain=0.32)},  # a bar rises
+    "alexnet": {"bar": S("tick", freq=1300, dec=0.03, gain=0.32),   # a bar rises
+                "hop": S("blip", rise=True, gain=0.26)},             # the eye hops from bar to bar
     "converge": {"pulse": S("thump", gain=0.6),                    # accelerating heartbeat into the impact
                  "wave": S("wave", gain=0.5)},                     # shockwave rings after it
     "transformer": {"tile": S("tile", gain=0.55),                  # x8, x64, x512 ... then the sea tilts
                     "token": S("token", gain=0.28)},               # one per generated token
     "compare": {"zero": S("zero_hit", gain=0.55),                  # punchy hit per zero, pitch climbing
                 "double": S("blip", rise=True, gain=0.3)},         # rapid rising blips
-    "finale": {"pylon": S("flyby", peak_at_cue=True, dur=0.8, gain=0.36),           # camera passes a pylon
+    "zoomout": {"gpu": S("tick", freq=1500, dec=0.03, gain=0.3),   # GPUs click into the server tray
+                "tray": S("blip", rise=True, gain=0.26)},          # trays stack into the rack
+    "finale": {"double": S("blip", rise=True, gain=0.2),           # each doubling along the curve
+               "pylon": S("flyby", peak_at_cue=True, dur=0.8, gain=0.36),           # camera passes a pylon
                "ring": S("flyby", peak_at_cue=True, dur=1.3, ring=True, gain=0.5)},  # a ring sweeps through
 }
 DEFAULT_TICK = S("tick", freq=1800, dec=0.018, gain=0.22)
