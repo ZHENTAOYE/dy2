@@ -28,6 +28,12 @@ const parse = (text: string): Seg[] => {
       i++;
       continue;
     }
+    if (text.startsWith("——", i)) {
+      // one segment, drawn as a continuous bar: two em-dash glyphs leave a visible gap between them
+      out.push({ ch: "——", hi });
+      i++;
+      continue;
+    }
     out.push({ ch: text[i], hi });
   }
   return out;
@@ -82,7 +88,24 @@ const Line: React.FC<{ cap: Cap; accent: string }> = ({ cap, accent }) => {
                 : "0 2px 4px rgba(0,0,0,0.95), 0 0 24px rgba(0,0,0,0.85)",
             }}
           >
-            {s.ch}
+            {s.ch === "——" ? (
+              <span style={{ position: "relative", display: "inline-block", width: "1.9em", height: "1em", verticalAlign: "-0.12em" }}>
+                <span
+                  style={{
+                    position: "absolute",
+                    left: "0.08em",
+                    right: "0.08em",
+                    top: "0.5em",
+                    height: "0.075em",
+                    borderRadius: "0.04em",
+                    background: "currentColor",
+                    boxShadow: s.hi ? `0 0 10px ${col}` : "0 1px 3px rgba(0,0,0,0.9)",
+                  }}
+                />
+              </span>
+            ) : (
+              s.ch
+            )}
           </span>
         );
       })}

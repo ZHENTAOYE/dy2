@@ -1,5 +1,5 @@
 // City around the campus (street lights, highways, power lines) and the surrounding region of towns.
-import { glow } from "../../lib/canvas";
+import { glow, glowStroke } from "../../lib/canvas";
 import { clamp, hash, rng } from "../../lib/math";
 import { C } from "../../lib/theme";
 import { Cam, onEarth, proj, R_EARTH } from "./cam";
@@ -188,6 +188,7 @@ const linkSet = () => {
       seen.add(key);
       const uj = LINKN[j * 3];
       const vj = LINKN[j * 3 + 1];
+      if (Math.hypot(uj - ui, vj - vi) > 42000) continue;
       const mid = onEarth((ui + uj) / 2, (vi + vj) / 2, 0);
       if (landAt(mid[0], mid[1] - R_EARTH - 1.9, mid[2]) < 0) continue;
       A.push(...onEarth(ui, vi, 0));
@@ -218,7 +219,9 @@ const highwayWeb = (g: G, c: Cam, alpha: number) => {
     const p = pr(L.a[i * 3], L.a[i * 3 + 1], L.a[i * 3 + 2]);
     const q = pr(L.b[i * 3], L.b[i * 3 + 1], L.b[i * 3 + 2]);
     if (!p || !q) continue;
-    if ((p[0] < 0 && q[0] < 0) || (p[0] > 1920 && q[0] > 1920) || (p[1] < 0 && q[1] < 0) || (p[1] > 1080 && q[1] > 1080)) continue;
+    const X0 = -c.sx;
+    const Y0 = -c.sy;
+    if ((p[0] < X0 && q[0] < X0) || (p[0] > X0 + 1920 && q[0] > X0 + 1920) || (p[1] < Y0 && q[1] < Y0) || (p[1] > Y0 + 1080 && q[1] > Y0 + 1080)) continue;
     if (Math.hypot(q[0] - p[0], q[1] - p[1]) < 2) continue;
     paths[L.k[i]].moveTo(p[0], p[1]);
     paths[L.k[i]].lineTo(q[0], q[1]);
@@ -243,7 +246,7 @@ const townBloom = (g: G, c: Cam, alpha: number) => {
   g.globalCompositeOperation = "lighter";
   for (let i = 0; i < T.n; i++) {
     const q = proj(c, T.x[i], T.y[i], T.z[i], 0.001);
-    if (!q || q.x < -80 || q.x > 2000 || q.y < -80 || q.y > 1160) continue;
+    if (!q || q.x < -80 - c.sx || q.x > 2000 - c.sx || q.y < -80 - c.sy || q.y > 1160 - c.sy) continue;
     const r = clamp(T.s[i] * 2.6 * q.s, 2.5, 90);
     glow(g, q.x, q.y, r, "#ff9a3c", alpha * clamp(T.w[i]) * 0.55, 0.06);
   }
@@ -271,9 +274,9 @@ const drawPts = (g: G, c: Cam, p: Pts, alpha: number, sizeM: number, minPx: numb
     if (z2 <= c.D * 0.001) continue;
     const s = 1500 / z2;
     const sx = 960 + x1 * s;
-    if (sx < -10 || sx > 1930) continue;
+    if (sx < -10 - c.sx || sx > 1930 - c.sx) continue;
     const sy = 540 + (y * c.cp - z1 * c.sp) * s;
-    if (sy < -10 || sy > 1090) continue;
+    if (sy < -10 - c.sy || sy > 1090 - c.sy) continue;
     const px = sizeM * s;
     if (px > maxPx * 1.6 && big.length < 30000) big.push(sx, sy, Math.min(10, px * 0.35), p.b[i], p.c[i]);
     const k = p.c[i];
@@ -347,6 +350,9 @@ const polyAt = (pl: Poly, t: number): [number, number, number, number] => {
   return [a[0] + dx * k, a[1] + dy * k, -dy / l, dx / l];
 };
 
+/** Highways only read near the city: they fade out with distance from its centre. */
+const hwFade = (u: number, v: number) => clamp(1 - (Math.hypot(u - CC[0], v - CC[1]) - 9000) / 8000);
+
 const highways = (g: G, c: Cam, f: number, alpha: number) => {
   if (alpha <= 0.01) return;
   g.save();
@@ -356,10 +362,12 @@ const highways = (g: G, c: Cam, f: number, alpha: number) => {
     g.fillStyle = "#ffc070";
     for (let i = 0; i <= nL; i++) {
       const [u, v] = polyAt(pl, i / nL);
+      const near = hwFade(u, v);
+      if (near <= 0) continue;
       const [X, Y, Z] = onEarth(u, v, 10);
       const q = proj(c, X, Y, Z, 0.001);
       if (!q || q.x < -20 || q.x > 1940 || q.y < -20 || q.y > 1100) continue;
-      g.globalAlpha = 0.6 * alpha;
+      g.globalAlpha = 0.6 * alpha * near;
       const s = clamp(26 * q.s, 1, 3);
       g.fillRect(q.x - s / 2, q.y - s / 2, s, s);
     }
@@ -369,11 +377,13 @@ const highways = (g: G, c: Cam, f: number, alpha: number) => {
       let t = (hash(i * 1.7 + hi * 9) + f * sp) % 1;
       if (dir) t = 1 - t;
       const [u, v, nx, ny] = polyAt(pl, t);
+      const near = hwFade(u, v);
+      if (near <= 0) continue;
       const off = dir ? 12 : -12;
       const [X, Y, Z] = onEarth(u + nx * off, v + ny * off, 2);
       const q = proj(c, X, Y, Z, 0.001);
       if (!q || q.x < -10 || q.x > 1930 || q.y < -10 || q.y > 1090) continue;
-      g.globalAlpha = alpha * 0.95;
+      g.globalAlpha = alpha * 0.95 * near;
       g.fillStyle = dir ? "#ff3b30" : "#f4f8ff";
       const s = clamp(14 * q.s, 1, 3.5);
       g.fillRect(q.x - s / 2, q.y - s / 2, s, s);
@@ -402,10 +412,14 @@ const LINES: [number, number][][] = PLANTS.map((pp) => {
   return pts;
 });
 
+const PULSE_EVERY = 12; // frames between energy pulses on each line
+const PULSE_RUN = 70; // frames a pulse takes from the plant to the campus
+
 const powerLines = (g: G, c: Cam, f: number, alpha: number) => {
   if (alpha <= 0.01) return;
   g.save();
   g.globalCompositeOperation = "lighter";
+  g.lineCap = "round";
   LINES.forEach((towers, li) => {
     for (let i = 0; i < towers.length; i++) {
       const [u, v] = towers[i];
@@ -414,58 +428,59 @@ const powerLines = (g: G, c: Cam, f: number, alpha: number) => {
       const b = proj(c, X, Y, Z, 0.001);
       const t = proj(c, Xt, Yt, Zt, 0.001);
       if (!b || !t) continue;
-      g.globalAlpha = 0.45 * alpha;
+      g.globalAlpha = 0.5 * alpha;
       g.strokeStyle = "#7d8ea8";
-      g.lineWidth = clamp(2 * t.s, 0.8, 4);
+      g.lineWidth = clamp(2 * t.s, 1, 4);
       g.beginPath();
       g.moveTo(b.x, b.y);
       g.lineTo(t.x, t.y);
       g.stroke();
+      g.globalAlpha = 1;
       const blink = (Math.floor(f / 15) + i) % 2 ? 1 : 0.25;
-      glow(g, t.x, t.y, clamp(10 * t.s, 2, 10), C.red, alpha * 0.7 * blink);
+      glow(g, t.x, t.y, clamp(10 * t.s, 3, 12), C.red, alpha * 0.75 * blink);
     }
-    for (let w = -1; w <= 1; w++) {
-      g.globalAlpha = 0.5 * alpha;
-      g.strokeStyle = "#8fb6ff";
-      g.lineWidth = 1;
-      g.beginPath();
-      let started = false;
+    // the wires: one glowing strand per phase
+    const wire: { x: number; y: number }[][] = [[], [], []];
+    for (let w = -1; w <= 1; w++)
       for (let i = 0; i < towers.length - 1; i++) {
         const [u0, v0] = towers[i];
         const [u1, v1] = towers[i + 1];
         const dx = u1 - u0;
         const dy = v1 - v0;
         const L = Math.hypot(dx, dy);
-        for (let s = 0; s <= 4; s++) {
-          const t = s / 4;
+        for (let s2 = 0; s2 < 4; s2++) {
+          const t = s2 / 4;
           const [X, Y, Z] = onEarth(u0 + dx * t + (-dy / L) * w * 7, v0 + dy * t + (dx / L) * w * 7, 40 - 12 * Math.sin(t * Math.PI));
           const q = proj(c, X, Y, Z, 0.001);
-          if (!q) {
-            started = false;
-            continue;
-          }
-          if (!started) {
-            g.moveTo(q.x, q.y);
-            started = true;
-          } else g.lineTo(q.x, q.y);
+          if (q) wire[w + 1].push(q);
         }
       }
-      g.stroke();
+    for (const ws of wire) {
+      if (ws.length < 2) continue;
+      glowStroke(g, () => {
+        g.moveTo(ws[0].x, ws[0].y);
+        for (let i = 1; i < ws.length; i++) g.lineTo(ws[i].x, ws[i].y);
+      }, "#8fd0ff", 1.6, 0.42 * alpha);
     }
-    g.globalAlpha = 1;
-    // energy pulses flowing to the campus
-    for (let q = 0; q < 18; q++) {
-      const t = (f * 0.007 + q / 18 + li * 0.37) % 1;
-      const pos = t * (towers.length - 1);
-      const i = Math.floor(pos);
-      const k = pos - i;
-      const [u0, v0] = towers[i];
-      const [u1, v1] = towers[Math.min(towers.length - 1, i + 1)];
-      const [X, Y, Z] = onEarth(u0 + (u1 - u0) * k, v0 + (v1 - v0) * k, 40 - 12 * Math.sin(k * Math.PI));
-      const p = proj(c, X, Y, Z, 0.001);
-      if (!p) continue;
-      glow(g, p.x, p.y, clamp(70 * p.s, 5, 30), C.cyan, alpha * 0.85);
-      glow(g, p.x, p.y, clamp(20 * p.s, 2, 8), "#ffffff", alpha * 0.75);
+    // energy pulses flowing to the campus: a new one every PULSE_EVERY frames, accelerating as they arrive
+    for (let q = 0; q < Math.ceil(PULSE_RUN / PULSE_EVERY) + 1; q++) {
+      const born = Math.floor((f + li * 5) / PULSE_EVERY) * PULSE_EVERY - q * PULSE_EVERY - li * 5;
+      const t = (f - born) / PULSE_RUN;
+      if (t < 0 || t > 1) continue;
+      const tt = t * t * (1.6 - 0.6 * t);
+      for (let tr = 0; tr < 4; tr++) {
+        const pos = clamp(tt - tr * 0.012) * (towers.length - 1);
+        const i = Math.min(towers.length - 2, Math.floor(pos));
+        const k = pos - i;
+        const [u0, v0] = towers[i];
+        const [u1, v1] = towers[i + 1];
+        const [X, Y, Z] = onEarth(u0 + (u1 - u0) * k, v0 + (v1 - v0) * k, 40 - 12 * Math.sin(k * Math.PI));
+        const p = proj(c, X, Y, Z, 0.001);
+        if (!p) continue;
+        const ta = (1 - tr / 4) * Math.min(1, t * 6);
+        glow(g, p.x, p.y, clamp(110 * p.s, 8, 44) * (1 - tr * 0.15), C.cyan, alpha * 0.9 * ta);
+        if (tr === 0) glow(g, p.x, p.y, clamp(30 * p.s, 3, 11), "#ffffff", alpha * 0.9);
+      }
     }
     const [pu, pv] = PLANTS[li];
     const [X, Y, Z] = onEarth(pu, pv, 30);
@@ -475,6 +490,51 @@ const powerLines = (g: G, c: Cam, f: number, alpha: number) => {
       glow(g, p.x, p.y, clamp(80 * p.s, 3, 30), "#fff2d0", alpha * 0.8);
     }
   });
+  // the substation receiving it all
+  const [su, sv] = SUBSTATION;
+  const [X, Y, Z] = onEarth(su, sv, 6);
+  const sp = proj(c, X, Y, Z, 0.001);
+  if (sp) {
+    const beat = Math.pow(1 - ((((f + 2) % PULSE_EVERY) + PULSE_EVERY) % PULSE_EVERY) / PULSE_EVERY, 3);
+    glow(g, sp.x, sp.y, clamp(60 * sp.s, 10, 70), C.cyan, alpha * (0.25 + 0.35 * beat), 0.08);
+  }
+  g.restore();
+};
+
+/** Power lines, kept out of the caption band once the last caption is up (soft mask via an offscreen layer). */
+let plLayer: HTMLCanvasElement | null = null;
+const CAP_FROM = 612;
+const powerLinesMasked = (g: G, c: Cam, f: number, alpha: number) => {
+  if (alpha <= 0.01) return;
+  const k = clamp((f - CAP_FROM) / 8);
+  if (k <= 0) {
+    powerLines(g, c, f, alpha);
+    return;
+  }
+  if (!plLayer) {
+    plLayer = document.createElement("canvas");
+    plLayer.width = 1920;
+    plLayer.height = 1080;
+  }
+  const o = plLayer.getContext("2d")!;
+  o.setTransform(1, 0, 0, 1, 0, 0);
+  o.globalCompositeOperation = "source-over";
+  o.globalAlpha = 1;
+  o.clearRect(0, 0, 1920, 1080);
+  o.setTransform(g.getTransform());
+  powerLines(o, c, f, alpha);
+  o.setTransform(1, 0, 0, 1, 0, 0);
+  o.globalCompositeOperation = "destination-in";
+  const gr = o.createLinearGradient(0, 740, 0, 815);
+  gr.addColorStop(0, "rgba(0,0,0,1)");
+  gr.addColorStop(1, `rgba(0,0,0,${1 - k})`);
+  o.fillStyle = gr;
+  o.fillRect(0, 0, 1920, 1080);
+  o.globalCompositeOperation = "source-over";
+  g.save();
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalCompositeOperation = "lighter";
+  g.drawImage(plLayer, 0, 0);
   g.restore();
 };
 
@@ -563,7 +623,7 @@ const streetLines = (g: G, c: Cam, alpha: number) => {
 export const drawCity = (g: G, c: Cam, f: number) => {
   const D = c.D;
   const cityA = clamp((D - 60) / 300) * (1 - clamp((D - 3.5e4) / 1.2e5));
-  const regA = clamp((D - 8000) / 30000) * (1 - clamp((D - 2.4e6) / 4e6));
+  const regA = clamp((D - 8000) / 30000) * (1 - clamp((D - 3e6) / 6e6));
   if (cityA <= 0 && regA <= 0) return;
   if (cityA > 0) {
     // warm sky-glow over the city
@@ -587,7 +647,7 @@ export const drawCity = (g: G, c: Cam, f: number) => {
     streetLines(g, c, cityA * clamp((D - 900) / 2600));
     drawNear(g, c, f);
     highways(g, c, f, cityA * (1 - clamp((D - 6e4) / 8e4)));
-    powerLines(g, c, f, cityA * (1 - clamp((D - 8e4) / 1e5)));
+    powerLinesMasked(g, c, f, cityA * (1 - clamp((D - 1.3e4) / 1.2e4)));
   }
   // the campus as a cyan beacon once it is small
   const ba = clamp((D - 500) / 1500) * (1 - clamp((D - 4e5) / 6e5));

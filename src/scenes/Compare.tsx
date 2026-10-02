@@ -9,36 +9,39 @@ import { cue, sceneDuration, ticks } from "../timeline";
 
 // ---------------------------------------------------------------------------------------------
 // Compare — the ultimate comparison. ENIAC's 5,000/s ember vs. today's AI supercomputer: a "1"
-// followed by twenty zeros slamming in, then the gap (2亿亿×) detonates, then 54 doublings that
-// finally get re-plotted on a true scale (the last block punches out of the frame).
+// followed by twenty zeros slamming in, the ember pings the finished number once, then the gap
+// (2亿亿×) detonates, then 54 doublings light up a straight log ramp from 1946 to 2024 and the
+// 54th sends its light up into the "2亿亿" headline (54 doublings = the gap).
 // ---------------------------------------------------------------------------------------------
 
 const DUR = sceneDuration("compare");
 const ZEROS = cue("compare", "zeros"); // the "1" lands
 const SUFFIX = cue("compare", "suffix"); // "次 / 秒" lands
+const PING = cue("compare", "ping"); // the tiny ember pings the giant number
 const INHALE = cue("compare", "inhale"); // everything is sucked in before the slam
 const GAP = cue("compare", "gap"); // the slam
 const DOUBLING = cue("compare", "doubling");
-const FULL = cue("compare", "full"); // true-scale payoff: the last block punches out of the top of the frame
+const FULL = cue("compare", "full"); // the 54th doubling: light sweep, then a beam up into the headline
 const ZT = ticks("compare", "zero"); // 20 landing frames
 const DT = ticks("compare", "double"); // 54 doubling frames
 const LAST_Z = ZT[ZT.length - 1];
 const PUSH0 = LAST_Z + 2; // the camera starts pushing in on the finished number
-const REPLOT = FULL - 7; // the staircase starts collapsing onto a true (linear) scale
 
 // ---- the big number ---------------------------------------------------------------------------
 // Tight, properly grouped digits all the way through: every comma owns a half slot. When a zero
-// lands, the commas hop (cross-fade) to their new places and the digits after them ease over.
-const DW = 0.62; // digit advance (em)
-const CW = 0.3; // separator advance (em)
+// lands, the old commas blink out, the digits ease over, and the new commas appear (never both).
+// Digits are Noto Sans SC Black: a plain zero (no dot / slash), heavy and poster-like.
+const DIGIT_FONT = (em: number) => `900 ${em}px ${FONT_CN}`;
+const DW = 0.6; // digit advance (em); the face's own advance is 0.609
+const CW = 0.28; // separator advance (em)
 const EM_MAX = 250;
-const WMAX = 1690; // final pixel width of the number
-const R_MAX = 1800; // right edge never passes this
+const WMAX = 1700; // final pixel width of the number
+const R_MAX = 1810; // right edge never passes this (the finished number is centred on x = 960)
 const CX0 = 1340; // centre while the number is young
 const NY = 520; // vertical centre of the digits
 const FLY = 6; // frames a glyph flies in before it lands
-const CAP = 0.365; // half cap-height of the digits (em, before the vertical stretch)
-const S_FLY = 2.05; // scale a zero starts at when it flies in from the camera
+const CAP = 0.372; // half height of the digits (em, before the vertical stretch): 0..0.758 above the baseline
+const S_FLY = 1.35; // scale a zero starts at when it flies in from the camera
 const ND = ZT.length + 1; // 21 digits
 /** While a caption is on screen, nothing bright may enter the caption band (y >= ~820). */
 const capOnAt = (f: number) => CAPS.some((c) => f >= c.from - 10 && f < c.to + 2);
@@ -66,32 +69,43 @@ const sepsOf = (D: number) => Math.max(0, Math.floor((D - 1) / 3));
  * number keeps (and at the end gains) height instead of thinning into a strip.
  */
 const stretchOf = (em: number, f: number) =>
-  Math.min(2.3, 1.3 * Math.pow(EM_MAX / em, 0.75)) * (1 + 0.08 * ease.inOutCubic(prog(f, PUSH0, SUFFIX + 8)));
+  Math.min(1.72, 1.25 * Math.pow(EM_MAX / em, 0.75)) * (1 + 0.05 * ease.inOutCubic(prog(f, PUSH0, SUFFIX + 8)));
 
-type Layout = { w: number[]; n: number; em: number; st: number; left: number; right: number; cx: number };
+/**
+ * Regrouping of the thousands separators for the landing at `t`: a quick 2-frame move in the middle of
+ * the zero's flight, ~80% done on the flight's middle frame, so no frame shows two half-open groupings.
+ */
+const regroupP = (f: number, t: number) => ease.inOutCubic(clamp((f - (t - 4.25)) / 2));
+
+type Layout = { w: number[]; wS: number[]; n: number; em: number; st: number; left: number; right: number; cx: number };
 const layout = (f: number): Layout => {
-  // c[j]: landing progress of digit j (the "1" is always there); w[D]: weight of the D-digit state
+  // c[j]: landing progress of digit j (the "1" is always there); w[D]: weight of the D-digit state.
+  // cs / wS: the same for the separator grouping (which regroups faster than the digit flies in).
   const c = [1, ...ZT.map((t) => ease.inOutCubic(landP(f, t)))];
+  const cs = [1, ...ZT.map((t) => regroupP(f, t))];
   const w: number[] = [0];
+  const wS: number[] = [0];
   let wEm = 0;
   for (let D = 1; D <= ND; D++) {
     const wd = c[D - 1] - (D < ND ? c[D] : 0);
+    const ws = cs[D - 1] - (D < ND ? cs[D] : 0);
     w.push(wd);
-    wEm += wd * (D * DW + sepsOf(D) * CW);
+    wS.push(ws);
+    wEm += wd * D * DW + ws * sepsOf(D) * CW;
   }
   const n = c.reduce((s, v) => s + v, 0) - 1;
   const em = Math.min(EM_MAX, WMAX / wEm);
   const pw = wEm * em;
   const cx = Math.min(CX0, R_MAX - pw / 2);
-  return { w, n, em, st: stretchOf(em, f), left: cx - pw / 2, right: cx + pw / 2, cx };
+  return { w, wS, n, em, st: stretchOf(em, f), left: cx - pw / 2, right: cx + pw / 2, cx };
 };
 /** Centre of digit i (em from the left edge). */
 const digitEm = (i: number, L: Layout) => {
   let s = 0;
   let tot = 0;
   for (let D = i + 1; D <= ND; D++) {
-    s += L.w[D] * SB[D][i];
-    tot += L.w[D];
+    s += L.wS[D] * SB[D][i];
+    tot += L.wS[D];
   }
   return i * DW + DW / 2 + (tot > 1e-6 ? s / tot : SB[Math.min(ND, i + 1)][i]) * CW;
 };
@@ -107,13 +121,14 @@ const numberGlyphs = (f: number, L: Layout): Glyph[] => {
     const LT = f < T ? layout(T) : L;
     out.push({ ch: "0", x: LT.left + digitEm(j, LT) * LT.em, t: T, idx: j, a: 1 });
   }
+  // Commas belong to exactly one state: the dominant one (ties go to the newer, longer number). The
+  // whole set hops to its new grouping on the landing's middle frame; never two sets at once.
+  let dom = 1;
+  for (let D = 2; D <= ND; D++) if (L.wS[D] >= L.wS[dom]) dom = D;
   for (let a = 0; a < ND - 1; a++) {
-    let al = 0;
-    for (let D = a + 2; D <= ND; D++) if (sepAfter(a, D)) al += L.w[D];
-    // sharpened cross-fade: the old comma is gone before the new one appears
-    const k = clamp((al - 0.35) / 0.3);
-    if (k <= 0.01) continue;
-    out.push({ ch: ",", x: L.left + (digitEm(a, L) + DW / 2 + CW / 2) * L.em, t: -1, idx: 100 + a, a: k });
+    if (!sepAfter(a, dom)) continue;
+    // centred in the gap as it is right now (equals the full-gap position once it has opened)
+    out.push({ ch: ",", x: L.left + ((digitEm(a, L) + digitEm(a + 1, L)) / 2) * L.em, t: -1, idx: 100 + a, a: 1 });
   }
   return out;
 };
@@ -145,8 +160,11 @@ const kickAt = (f: number) => {
   return k;
 };
 
-/** The old picture (number, labels, ember) clears out over the last frames before the slam. */
-const oldA = (f: number) => 1 - ease.inOutQuad(clamp((f - (GAP - 9)) / 6));
+/** The old picture (number, labels, ember) stays until the last breath: the digits implode right up to the slam. */
+const oldA = (f: number) => 1 - ease.inQuad(prog(f, GAP - 6, GAP));
+/** How far the digits have been sucked toward the slam point (0..0.32). */
+const IMPLODE = 0.32;
+const implodeAt = (f: number) => IMPLODE * ease.inCubic(prog(f, GAP - 14, GAP - 1));
 
 // ---- ENIAC ember --------------------------------------------------------------------------------
 const EA = { x: 560, y: NY };
@@ -183,17 +201,31 @@ const PITCH = (TX1 - TX0) / 54;
 const BW = PITCH - 7;
 /** Log scale: every block is one doubling, so the tops form a straight ramp. */
 const bhLog = (k: number) => 40 + (k / 53) * 252;
-/** True (linear) scale: block 53 is 1500 px, every block before it half of the next. */
-const H_TOP = 1500;
-const bhLin = (k: number) => Math.max(2, H_TOP * Math.pow(2, k - 53));
-const RISES = (k: number) => bhLin(k) > bhLog(k);
-const replotQ = (k: number, f: number) =>
-  RISES(k)
-    ? ease.outExpo(clamp((f - (FULL - 1) + (53 - k) * 0.7) / 8)) // block 53 leaves the frame exactly on FULL
-    : ease.inCubic(clamp((f - REPLOT - (k / 53) * 4) / 5)); // the rest drop to the floor, left to right
-const barH = (k: number, f: number) => lerp(bhLog(k), bhLin(k), replotQ(k, f));
 const barX = (k: number) => TX0 + k * PITCH + PITCH / 2;
 const doublings = (f: number) => DT.filter((t) => t <= f).length;
+// The payoff after the 54th doubling: a light wave runs up the ramp (left to right) while a span
+// draws "78 年" along the axis; when the wave reaches the top block, a beam carries its light up into
+// the "2亿亿" headline, which flares on arrival.
+const SWEEP_LEN = 12; // frames for the wave to cross all 54 blocks
+const BEAM0 = FULL + SWEEP_LEN - 1; // the beam leaves the top block
+const BEAM_LEN = 11;
+const HIT = BEAM0 + BEAM_LEN; // ...and lands in the headline
+const sweepAt = (f: number) => (f >= FULL && f < FULL + SWEEP_LEN + 8 ? (f - FULL) * (53 / (SWEEP_LEN - 1)) : -99);
+/** Where the headline's "2亿亿" sits once it has docked at the top (frame coordinates). */
+const HEAD = { x: 1032, y: 196 };
+/** Half-width of the docked headline block ("差距：约 2亿亿 倍" is centred on x = 960), plus a margin. */
+const HEAD_RX = 380;
+const beamPt = (u: number) => {
+  const x0 = barX(53);
+  const y0 = TBASE - bhLog(53) - 8;
+  // arcs high over the headline's right end and drops into "2亿亿"
+  const cx = 1500;
+  const cy = 10;
+  const x1 = HEAD.x + 20;
+  const y1 = HEAD.y - 34;
+  const v = 1 - u;
+  return { x: v * v * x0 + 2 * v * u * cx + u * u * x1, y: v * v * y0 + 2 * v * u * cy + u * u * y1 };
+};
 
 // ---- starfield (deterministic, built once) --------------------------------------------------------
 const STARS = (() => {
@@ -330,16 +362,26 @@ const drawGlyph = (
   heat: number,
   rot = 0,
   shadow = true,
+  /** additive, flat-coloured copy (motion streaks) */
+  streak = false,
 ) => {
   if (alpha <= 0.01) return;
   ctx.save();
   ctx.translate(x, y);
   if (rot) ctx.rotate(rot);
   ctx.scale(s, s * st);
-  ctx.font = `800 ${em}px ${FONT_MONO}`;
+  ctx.font = DIGIT_FONT(em);
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
   const by = CAP * em;
+  if (streak) {
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = col;
+    ctx.fillText(ch, 0, by);
+    ctx.restore();
+    return;
+  }
   if (heat > 0.04) {
     // chromatic split on impact
     const o = em * 0.07 * heat;
@@ -356,12 +398,12 @@ const drawGlyph = (
     ctx.shadowColor = col;
     ctx.shadowBlur = em * (0.16 + 0.3 * Math.min(1, heat));
   }
-  // white-hot top fading into the saturated colour at the foot (heat bleaches it to white)
+  // at rest: a pale top falling into the fully saturated colour; heat bleaches it white-hot
   const hk = Math.min(1, heat);
   const gr = ctx.createLinearGradient(0, -CAP * em, 0, CAP * em);
-  gr.addColorStop(0, mix(col, "#ffffff", 0.82 + 0.18 * hk));
-  gr.addColorStop(0.5, mix(col, "#ffffff", 0.42 + 0.5 * hk));
-  gr.addColorStop(1, mix(col, "#ffffff", 0.08 + 0.6 * hk));
+  gr.addColorStop(0, mix(col, "#ffffff", 0.55 + 0.45 * hk));
+  gr.addColorStop(0.45, mix(col, "#ffffff", 0.2 + 0.7 * hk));
+  gr.addColorStop(1, mix(col, "#ffffff", 0.6 * hk));
   ctx.fillStyle = gr;
   ctx.fillText(ch, 0, by);
   ctx.shadowBlur = 0;
@@ -529,60 +571,114 @@ const drawNumber = (ctx: CanvasRenderingContext2D, f: number, L: Layout) => {
   }
   ctx.globalCompositeOperation = "source-over";
   // the last frames before the slam: everything is sucked toward the centre
-  const implode = 0.32 * ease.inCubic(prog(f, GAP - 14, GAP - 1));
+  const implode = implodeAt(f);
   const stc = Math.min(L.st, 1.5); // commas keep a sane shape
   for (const g of gl) {
     const col = hotX(g.x);
     const jx = inhale > 0 ? (hash(f * 3.1 + g.idx * 7.7) - 0.5) * 16 * inhale * inhale : 0;
     const jy = inhale > 0 ? (hash(f * 5.3 + g.idx * 2.9) - 0.5) * 10 * inhale * inhale : 0;
-    const sheen = sheenOn ? 0.9 * Math.exp(-Math.pow((g.x - sweepX) / 110, 2)) : 0;
+    const sheen = sheenOn ? 0.6 * Math.exp(-Math.pow((g.x - sweepX) / 230, 2)) : 0;
+    const ping = pingHeat(f, g.x);
     if (g.ch === ",") {
       const cy = NY + CAP * L.em * (L.st - stc);
-      drawGlyph(ctx, ",", lerp(g.x, GX, implode) + jx, cy + jy, L.em, stc, 1, g.a * A, col, 0.2 * inhale + sheen);
+      drawGlyph(ctx, ",", lerp(g.x, GX, implode) + jx, cy + jy, L.em, stc, 1, g.a * A, col, 0.2 * inhale + sheen + ping);
       continue;
     }
     const p = landP(f, g.t);
     if (p <= 0) continue;
     const dt = f - g.t;
     const approach = ease.inQuad(p);
-    const pop = dt >= 0 ? 1 + 0.14 * Math.exp(-dt / 3) : 1;
+    const pop = dt >= 0 ? 1 + 0.12 * Math.exp(-dt / 3) : 1;
     // fly in from the camera; while a caption is up, the flying glyph must stay out of the caption band
-    const maxS = (790 - NY) / (half * 1.2);
+    const maxS = (790 - NY) / (half * 1.15);
     const s0 = capOnAt(f) ? Math.min(S_FLY, maxS) : S_FLY;
     const s = (1 + (s0 - 1) * (1 - approach)) * pop * (1 + 0.04 * inhale);
-    const heat = dt >= 0 ? Math.exp(-dt / 7) : 0.6 + 0.4 * p;
-    const alpha = ease.outQuad(p) * A;
+    // white-hot while it flies in (solid almost at once), cooling into its colour after the impact
+    const heat = dt >= 0 ? Math.exp(-dt / 6) : 0.7;
+    const alpha = ease.outCubic(p) * A;
     if (p < 1) {
-      // motion ghosts trailing back toward the camera
-      drawGlyph(ctx, g.ch, g.x, NY, L.em, L.st, s * 1.08, alpha * 0.28, col, 0, 0, false);
-      drawGlyph(ctx, g.ch, g.x, NY, L.em, L.st, s * 1.17, alpha * 0.14, col, 0, 0, false);
-      drawGlyph(ctx, g.ch, g.x, NY, L.em, L.st, s * 1.27, alpha * 0.06, col, 0, 0, false);
+      // short zoom streak: additive, saturated copies trailing back toward the camera
+      const trail = 1 - approach;
+      for (let q = 1; q <= 3; q++) {
+        const sq = s * (1 + 0.045 * q * (0.3 + trail));
+        drawGlyph(ctx, g.ch, g.x, NY, L.em, L.st, sq, alpha * 0.24 * (1 - q / 4), col, 0, 0, false, true);
+      }
     }
-    drawGlyph(ctx, g.ch, lerp(g.x, GX, implode) + jx, NY + jy, L.em, L.st, s * (1 - 0.3 * implode), alpha, col, heat + 0.35 * inhale + sheen);
+    drawGlyph(ctx, g.ch, lerp(g.x, GX, implode) + jx, NY + jy, L.em, L.st, s * (1 - 0.3 * implode), alpha, col, heat + 0.35 * inhale + sheen + ping);
   }
 };
 
-/** Shockwave ring + sparks for every landing. */
-const drawImpacts = (ctx: CanvasRenderingContext2D, f: number) => {
+// ---- the ember's ping ---------------------------------------------------------------------------
+// The opening pings found nothing; now one sonar ring leaves the tiny ember and washes over the giant
+// number, lighting each digit as it passes: 5,000 vs. this.
+const PING_V = 118; // px per frame
+const PING_OUT = 2; // the ring leaves this long after the ember flares
+const pingHeat = (f: number, x: number) => {
+  const t = f - PING - PING_OUT;
+  if (t < 0 || f >= GAP) return 0;
+  const e = emberAt(f);
+  const dt = t - Math.hypot(x - e.x, NY - e.y) / PING_V;
+  return dt < 0 ? 0 : 0.9 * Math.exp(-dt / 4);
+};
+const drawPing = (ctx: CanvasRenderingContext2D, f: number) => {
+  const t = f - PING;
+  if (t < -5 || t > 32 || f >= GAP) return;
+  const e = emberAt(f);
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  // the ember gathers itself, then flares
+  const charge = t < 0 ? ease.inQuad((t + 5) / 5) : Math.exp(-t / 6);
+  glow(ctx, e.x, e.y, 80 + 170 * charge, C.amber, 0.55 * charge, 0.05);
+  glow(ctx, e.x, e.y, 18 + 26 * charge, C.white, 0.95 * charge);
+  const tr = t - PING_OUT;
+  if (tr >= 0) {
+    const R = 24 + tr * PING_V;
+    const a = Math.exp(-tr / 12) * (1 - clamp((tr - 13) / 6));
+    if (a > 0.01) {
+      // one stroke per layer; a vertical gradient fades it out above the caption band (no hard cut-off)
+      const col = mix(C.amber, C.ice, clamp(tr / 12));
+      const core = mix(col, "#ffffff", 0.5);
+      const fadeY = (c: string, k: number) => {
+        const g = ctx.createLinearGradient(0, 690, 0, 785);
+        g.addColorStop(0, withAlpha(c, k));
+        g.addColorStop(1, withAlpha(c, 0));
+        return g;
+      };
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, R - 10, 0, TAU);
+      ctx.strokeStyle = fadeY(col, 0.16 * a);
+      ctx.lineWidth = 26;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, R, 0, TAU);
+      ctx.strokeStyle = fadeY(core, 0.95 * a);
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+};
+
+const impactBig = (i: number) => (i === 0 ? 1.5 : i === ND - 1 ? 1.75 : 0.8 + 0.5 * (i / 20));
+/** Shockwave rings of every landing: drawn BEHIND the digits, so they never cut through a glyph. */
+const drawImpactRings = (ctx: CanvasRenderingContext2D, f: number) => {
   if (f >= GAP - 4) return;
   const A = oldA(f);
   ctx.globalCompositeOperation = "lighter";
   for (const im of IMPACTS) {
     const dt = f - im.t;
-    if (dt < 0 || dt > 60) continue;
+    if (dt < 0 || dt > 40) continue;
     const last = im.i === ND - 1;
-    const big = im.i === 0 ? 1.5 : last ? 1.75 : 0.8 + 0.5 * (im.i / 20);
+    const big = impactBig(im.i);
     const col = hotX(im.x);
-    // brightness kick at the impact point
-    glow(ctx, im.x, NY, 420 * big, col, 0.35 * Math.exp(-dt / 5) * big * A, 0.03);
-    glow(ctx, im.x, NY, 120 * big, C.white, 0.5 * Math.exp(-dt / 3) * A, 0.1);
-    // rings
     const nr = last ? 3 : 2;
+    // the last landing's rings are short-lived, so the finished number reads clean
+    const life = last ? 1 - clamp((dt - 6) / 8) : 1 - clamp((dt - 14) / 16);
     for (let k = 0; k < nr; k++) {
       const tt = dt - k * 3;
       if (tt < 0) continue;
       const r = im.em * 0.35 + tt * (17 - k * 5) * big * Math.exp(-tt / 45);
-      const a = Math.exp(-tt / (10 + k * 5)) * A;
+      const a = Math.exp(-tt / (10 + k * 5)) * A * life;
       if (a < 0.02) continue;
       ctx.strokeStyle = withAlpha(k === 1 ? C.cyan : k === 2 ? C.magenta : mix(col, "#ffffff", 0.4), a * 0.85);
       ctx.lineWidth = 1.5 + 9 * a;
@@ -590,6 +686,23 @@ const drawImpacts = (ctx: CanvasRenderingContext2D, f: number) => {
       ctx.ellipse(im.x, NY, r, r * 0.42, 0, 0, TAU);
       ctx.stroke();
     }
+  }
+  ctx.globalCompositeOperation = "source-over";
+};
+/** Brightness kick + sparks of every landing: in front of the digits. */
+const drawImpacts = (ctx: CanvasRenderingContext2D, f: number) => {
+  if (f >= GAP - 4) return;
+  const A = oldA(f);
+  ctx.globalCompositeOperation = "lighter";
+  for (const im of IMPACTS) {
+    const dt = f - im.t;
+    if (dt < 0 || dt > 50) continue;
+    const last = im.i === ND - 1;
+    const big = impactBig(im.i);
+    const col = hotX(im.x);
+    // brightness kick at the impact point
+    glow(ctx, im.x, NY, 420 * big, col, 0.35 * Math.exp(-dt / 5) * big * A, 0.03);
+    glow(ctx, im.x, NY, 90 * big, C.white, 0.34 * Math.exp(-dt / 3) * A, 0.1);
     // sparks
     const n = im.i === 0 ? 150 : last ? 190 : 70;
     for (let s = 0; s < n; s++) {
@@ -600,7 +713,7 @@ const drawImpacts = (ctx: CanvasRenderingContext2D, f: number) => {
       const d = (v / drag) * (1 - Math.exp(-drag * dt));
       const x = im.x + Math.cos(a) * d * 1.25;
       const y = NY + Math.sin(a) * d * 0.8 + 0.1 * dt * dt;
-      const life = 1 - dt / (24 + 34 * hash(seed * 4.4));
+      const life = 1 - dt / (last ? 12 + 12 * hash(seed * 4.4) : 20 + 28 * hash(seed * 4.4));
       if (life <= 0) continue;
       glow(ctx, x, y, 2 + 4 * hash(seed) * life + 1.5, s % 3 ? col : C.white, life * bandK(f, y) * A);
     }
@@ -643,6 +756,8 @@ const drawDebris = (ctx: CanvasRenderingContext2D, f: number) => {
   const t = f - GAP;
   if (t < 0 || t > 40) return;
   for (const g of DEBRIS) {
+    // the blast starts from where the inhale left each digit (imploded toward the slam point)
+    const x0 = lerp(g.x, GX, IMPLODE);
     const dx = g.x - GX;
     const side = dx >= 0 ? 1 : -1;
     const sp = (20 + 46 * hash(g.idx * 3.3)) * (0.45 + 0.75 * Math.min(1, Math.abs(dx) / 800));
@@ -650,10 +765,10 @@ const drawDebris = (ctx: CanvasRenderingContext2D, f: number) => {
     const vy = up * (46 + 40 * hash(g.idx * 5.7));
     const drag = 0.07;
     const k = (1 - Math.exp(-drag * t)) / drag;
-    const x = g.x + side * sp * k;
+    const x = x0 + side * sp * k;
     const y = NY + vy * k + 0.25 * t * t;
     const rot = (hash(g.idx * 9.9) - 0.5) * 0.12 * t;
-    const s = 1 + 0.06 * t;
+    const s = (1 - 0.3 * IMPLODE) * (1 + 0.06 * t);
     const a = 0.55 * Math.exp(-t / 4.5) * g.a;
     const col = hotX(g.x);
     const st = g.ch === "," ? Math.min(DEBRIS_L.st, 1.5) : DEBRIS_L.st;
@@ -667,19 +782,24 @@ const drawExplosion = (ctx: CanvasRenderingContext2D, f: number) => {
   if (t < 0) return;
   const hold = 1 - prog(f, DOUBLING - 40, DOUBLING + 10);
   ctx.globalCompositeOperation = "lighter";
-  // god rays
-  const rayA = 0.3 * Math.exp(-t / 28) + 0.07 * hold;
+  // god rays: white-gold at the blast, settling into warm, slowly breathing amber/ember rays for the hold
+  const rayA = 0.3 * Math.exp(-t / 28) + (0.13 + 0.03 * Math.sin(t * 0.11)) * hold * clamp(t / 20);
   if (rayA > 0.005) {
     ctx.save();
     ctx.translate(GX, GY);
     ctx.rotate(t * 0.0025);
+    const warmK = clamp(t / 30);
     for (let i = 0; i < 56; i++) {
       const a = (i / 56) * TAU + hash(i * 1.9) * 0.08;
       const len = 1500;
       const wid = 0.008 + hash(i * 9.1) * 0.03;
-      const col = i % 4 === 0 ? "#ffffff" : mix(C.gold, C.magenta, hash(i * 2.2));
+      const hot0 = i % 4 === 0 ? "#ffffff" : mix(C.gold, C.magenta, hash(i * 2.2));
+      const warm0 = i % 4 === 0 ? C.warm : mix(C.gold, C.ember, hash(i * 2.2));
+      const col = mix(hot0, warm0, warmK);
+      // each ray breathes on its own phase
+      const br = 0.75 + 0.25 * Math.sin(t * 0.07 + i * 1.7);
       const gr = ctx.createLinearGradient(0, 0, Math.cos(a) * len, Math.sin(a) * len);
-      gr.addColorStop(0, withAlpha(col, rayA * (0.6 + 0.4 * hash(i * 4.4))));
+      gr.addColorStop(0, withAlpha(col, rayA * br * (0.6 + 0.4 * hash(i * 4.4))));
       gr.addColorStop(1, withAlpha(col, 0));
       ctx.fillStyle = gr;
       ctx.beginPath();
@@ -697,8 +817,9 @@ const drawExplosion = (ctx: CanvasRenderingContext2D, f: number) => {
   for (let k = 0; k < 7; k++) {
     const tt = t - k * 3.5;
     if (tt < 0) continue;
-    const r = 60 + tt * (64 - k * 6) * Math.exp(-tt / 70);
-    const a = Math.exp(-tt / (7 + k)) * (1 - clamp((tt - 20) / 16));
+    const r = 60 + tt * (64 - k * 4) * Math.exp(-tt / 70);
+    // every wave is gone before the sub-line comes up under the headline
+    const a = Math.exp(-tt / (7 + k)) * (1 - clamp((tt - 20) / 16)) * (1 - clamp((t - 18) / 8));
     if (a < 0.02) continue;
     const col = k === 0 ? "#ffffff" : k % 3 === 1 ? C.gold : k % 3 === 2 ? C.magenta : C.cyan;
     ctx.strokeStyle = withAlpha(col, a * 0.9);
@@ -809,16 +930,17 @@ const drawExplosion = (ctx: CanvasRenderingContext2D, f: number) => {
       ctx.stroke();
     }
   }
-  // aftershocks: slow ripples rolling out from behind the text while it holds
+  // aftershocks: slow ripples rolling out from just outside the text block while it holds (they
+  // start beyond the text's extent, so no ring ever crosses the headline or the sub-line)
   if (t > 26) {
     const ra = hold * clamp((t - 26) / 20);
     for (let k = 0; k < 3; k++) {
       const u = ((((t - 26 + k * 12) % 36) + 36) % 36) / 36;
-      const r = 300 + 900 * ease.outCubic(u);
-      ctx.strokeStyle = withAlpha(k === 1 ? C.magenta : C.gold, 0.16 * Math.pow(1 - u, 1.5) * ra);
+      const r = RING_R0 + 800 * ease.outCubic(u);
+      ctx.strokeStyle = withAlpha(k === 1 ? C.ember : C.gold, 0.2 * Math.pow(1 - u, 1.5) * ra * clamp(u * 6));
       ctx.lineWidth = 2 + 6 * (1 - u);
       ctx.beginPath();
-      ctx.ellipse(GX, GY, r, r * 0.6, 0, 0, TAU);
+      ctx.ellipse(GX, GY, r, r * 0.62, 0, 0, TAU);
       ctx.stroke();
     }
   }
@@ -829,7 +951,7 @@ const drawExplosion = (ctx: CanvasRenderingContext2D, f: number) => {
     for (let k = 0; k < 2; k++) {
       const tk = ta - k * 4;
       if (tk < 0) continue;
-      const r = 230 + tk * (30 - k * 8) * Math.exp(-tk / 40);
+      const r = RING_R0 + tk * (34 - k * 8) * Math.exp(-tk / 40);
       const ak = Math.exp(-tk / (9 + 4 * k)) * hold;
       ctx.strokeStyle = withAlpha(k ? C.magenta : mix(C.gold, "#ffffff", 0.4), 0.6 * ak);
       ctx.lineWidth = 2 + 12 * ak;
@@ -878,6 +1000,8 @@ const drawExplosion = (ctx: CanvasRenderingContext2D, f: number) => {
   }
 };
 const AFTERSHOCK = GAP + 64;
+/** Aftershock rings start outside the slam text block (its half-width is ~700 px at the hold's scale). */
+const RING_R0 = 760;
 
 const drawDoubling = (ctx: CanvasRenderingContext2D, f: number) => {
   const a0 = ease.outCubic(prog(f, DOUBLING - 24, DOUBLING + 4));
@@ -921,6 +1045,11 @@ const drawDoubling = (ctx: CanvasRenderingContext2D, f: number) => {
   // arrival at 2024: a ring burst at the end of the axis
   const ar = f - (DOUBLING + 2);
   if (ar >= 0 && ar < 26) {
+    ctx.save();
+    // clipped just under the axis, so it never touches the "2024" label popping in below
+    ctx.beginPath();
+    ctx.rect(TX1 - 200, TBASE - 200, 400, 222);
+    ctx.clip();
     ctx.globalCompositeOperation = "lighter";
     for (let k = 0; k < 2; k++) {
       const tt = ar - k * 4;
@@ -932,14 +1061,16 @@ const drawDoubling = (ctx: CanvasRenderingContext2D, f: number) => {
       ctx.ellipse(TX1 + 10, TBASE + 11, r, r * 0.42, 0, 0, TAU);
       ctx.stroke();
     }
+    ctx.restore();
+    ctx.globalCompositeOperation = "lighter";
     glow(ctx, TX1 + 10, TBASE + 11, 140, C.cyan, 0.6 * Math.exp(-ar / 6) * a0, 0.05);
     ctx.globalCompositeOperation = "source-over";
   }
-  // a light wave runs across the whole staircase on the 54th doubling
-  const sweep = f >= DT[53] && f < REPLOT + 4 ? (f - DT[53]) * 9 : -99;
+  // the 54th doubling: a light wave runs up the whole ramp, left to right
+  const sweep = sweepAt(f);
   for (let k = 0; k < 54; k++) {
     const x = TX0 + k * PITCH + (PITCH - BW) / 2;
-    const hk = barH(k, f);
+    const hk = bhLog(k);
     // ghost slot, revealed left to right with the axis
     const slotA = clamp((axisW - (x - TX0)) / 60) * a0;
     const dt = f - DT[k];
@@ -952,29 +1083,38 @@ const drawDoubling = (ctx: CanvasRenderingContext2D, f: number) => {
     const p = ease.outBack(clamp((dt + 2) / 6));
     const pc = clamp(p);
     const heat = dt >= 0 ? Math.exp(-dt / 6) : 1;
-    const wave = sweep > -50 ? Math.exp(-Math.pow(k - sweep, 2) / 10) : 0;
+    const wave = sweep > -50 ? Math.exp(-Math.pow(k - sweep, 2) / 8) : 0;
     const col = hot(k / 53);
     const hh = hk * p;
     const top = TBASE - hh;
     const gr = ctx.createLinearGradient(0, top, 0, TBASE);
     gr.addColorStop(0, mix(col, "#ffffff", Math.min(1, 0.5 + 0.5 * heat + wave)));
-    gr.addColorStop(Math.min(0.5, 24 / Math.max(1, hh)), withAlpha(col, 0.95));
-    gr.addColorStop(1, withAlpha(col, 0.36));
+    gr.addColorStop(Math.min(0.5, 24 / Math.max(1, hh)), mix(col, "#ffffff", 0.6 * wave));
+    gr.addColorStop(1, withAlpha(mix(col, "#ffffff", 0.4 * wave), 0.36 + 0.4 * wave));
     ctx.fillStyle = gr;
     ctx.fillRect(x, top, BW, hh);
     // floor reflection
     const rh = Math.min(hh * 0.4, 70);
     if (rh > 1) {
       const rg = ctx.createLinearGradient(0, TBASE + 14, 0, TBASE + 14 + rh);
-      rg.addColorStop(0, withAlpha(col, 0.22 + 0.2 * heat));
+      rg.addColorStop(0, withAlpha(col, 0.22 + 0.2 * heat + 0.2 * wave));
       rg.addColorStop(1, withAlpha(col, 0));
       ctx.fillStyle = rg;
       ctx.fillRect(x, TBASE + 14, BW, rh);
     }
     ctx.globalCompositeOperation = "lighter";
     // the top glow rises with the block (no hot dot parked on the floor before it grows)
-    if (top > -60) glow(ctx, x + BW / 2, top, 30 + 60 * heat + 40 * wave, col, (0.4 + 0.6 * heat + 0.6 * wave) * pc);
+    glow(ctx, x + BW / 2, top, 30 + 60 * heat + 50 * wave, col, (0.4 + 0.6 * heat + 0.7 * wave) * pc);
     if (heat > 0.1) glow(ctx, x + BW / 2, top + hh / 2, Math.max(90, hh * 0.9 + 30), col, 0.35 * heat * pc, 0.04);
+    // the wave lifts a short shaft of light off each block top as it passes
+    if (wave > 0.04) {
+      const sh = 70 + 90 * (k / 53);
+      const sg = ctx.createLinearGradient(0, top - sh, 0, top);
+      sg.addColorStop(0, withAlpha(col, 0));
+      sg.addColorStop(1, withAlpha(mix(col, "#ffffff", 0.5), 0.55 * wave));
+      ctx.fillStyle = sg;
+      ctx.fillRect(x, top - sh, BW, sh);
+    }
     // a little burst of sparks off the top of every new block
     if (dt >= 0 && dt < 16) {
       for (let q = 0; q < 14; q++) {
@@ -986,29 +1126,9 @@ const drawDoubling = (ctx: CanvasRenderingContext2D, f: number) => {
         glow(ctx, x + BW / 2 + Math.cos(an) * d, TBASE - bhLog(k) + Math.sin(an) * d + 0.12 * dt * dt, 2 + 3 * hash(sd), q % 3 ? col : "#ffffff", life);
       }
     }
-    // the blocks that shoot up on the true scale: a light trail above them while they race upward
-    if (RISES(k) && f >= FULL - 3) {
-      const vel = barH(k, f) - barH(k, f - 1);
-      if (vel > 6) {
-        const len = Math.min(900, vel * 2.4);
-        const tg = ctx.createLinearGradient(0, top - len, 0, top);
-        tg.addColorStop(0, withAlpha(col, 0));
-        tg.addColorStop(1, withAlpha(mix(col, "#ffffff", 0.6), 0.85));
-        ctx.fillStyle = tg;
-        ctx.fillRect(x - 3, top - len, BW + 6, len);
-      }
-      // a soft column of light along the riser
-      const ca = clamp((f - FULL + 1) / 3) * (0.5 + 0.5 * Math.exp(-Math.max(0, tf) / 12));
-      const cg = ctx.createLinearGradient(x - 40, 0, x + BW + 40, 0);
-      cg.addColorStop(0, withAlpha(col, 0));
-      cg.addColorStop(0.5, withAlpha(col, 0.28 * ca * (k === 53 ? 1 : 0.6)));
-      cg.addColorStop(1, withAlpha(col, 0));
-      ctx.fillStyle = cg;
-      ctx.fillRect(x - 40, Math.max(-20, top), BW + 80, TBASE - Math.max(-20, top));
-    }
     ctx.globalCompositeOperation = "source-over";
   }
-  // the line through the block tops: straight on the log scale, a hockey stick on the true scale
+  // the line through the block tops: one doubling per block, so on this (log) scale it is a straight ramp
   if (n > 1) {
     const lg = ctx.createLinearGradient(TX0, 0, TX1, 0);
     lg.addColorStop(0, hot(0));
@@ -1018,19 +1138,19 @@ const drawDoubling = (ctx: CanvasRenderingContext2D, f: number) => {
       ctx.beginPath();
       for (let k = 0; k < n; k++) {
         const p = ease.outBack(clamp((f - DT[k] + 2) / 6));
-        const y = TBASE - barH(k, f) * p - 9;
-        if (k) ctx.lineTo(barX(k), Math.max(-200, y));
+        const y = TBASE - bhLog(k) * p - 9;
+        if (k) ctx.lineTo(barX(k), y);
         else ctx.moveTo(barX(k), y);
       }
     };
-    const fin = tf >= -1 ? Math.exp(-Math.max(0, tf) / 10) : 0;
+    const fin = tf >= 0 ? Math.exp(-tf / 14) : 0;
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     ctx.strokeStyle = lg;
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
-    ctx.globalAlpha = (0.14 + 0.25 * fin) * a0;
-    ctx.lineWidth = 16;
+    ctx.globalAlpha = (0.14 + 0.3 * fin) * a0;
+    ctx.lineWidth = 16 + 8 * fin;
     path();
     ctx.stroke();
     ctx.globalAlpha = (0.85 + 0.15 * fin) * a0;
@@ -1039,26 +1159,25 @@ const drawDoubling = (ctx: CanvasRenderingContext2D, f: number) => {
     ctx.stroke();
     ctx.restore();
   }
-  // scanning head on the newest block
-  if (n > 0 && f < REPLOT + 4) {
+  // scanning head on the newest block (retires once the last one is in)
+  if (n > 0 && f < FULL + 8) {
     const k = n - 1;
     const x = barX(k);
     const hk = bhLog(k);
-    const ha = a0 * (1 - prog(f, REPLOT - 4, REPLOT + 2));
+    const ha = a0 * (1 - prog(f, FULL, FULL + 8));
     const gr = ctx.createLinearGradient(0, TBASE - hk - 150, 0, TBASE + 10);
     gr.addColorStop(0, "rgba(255,255,255,0)");
     gr.addColorStop(1, withAlpha("#ffffff", 0.55 * ha));
     ctx.fillStyle = gr;
     ctx.fillRect(x - 1.5, TBASE - hk - 150, 3, hk + 160);
   }
-  // ×2 pulses over the newest block (gone before the re-plot)
+  // ×2 pulses over the newest block
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
-  const xA = 1 - prog(f, REPLOT - 3, REPLOT + 1);
-  for (let k = Math.max(0, n - 1); k < n && xA > 0; k++) {
+  for (let k = Math.max(0, n - 1); k < n; k++) {
     const dt = f - DT[k];
     if (dt > 16) continue;
-    const a = (1 - dt / 16) * a0 * xA;
+    const a = (1 - dt / 16) * a0;
     const s = 1 + 0.5 * Math.exp(-dt / 3);
     const y = TBASE - bhLog(k) - 34 - dt * 2.6;
     ctx.save();
@@ -1071,52 +1190,178 @@ const drawDoubling = (ctx: CanvasRenderingContext2D, f: number) => {
     ctx.fillText("×2", 0, 0);
     ctx.restore();
   }
-  // the payoff: block 53 punches through its old ceiling and out of the frame
-  if (tf >= -1 && tf < 34) {
+  // the 54th lands: a ring burst on the top of the ramp
+  if (tf >= 0 && tf < 30) {
     const x = barX(53);
     const y = TBASE - bhLog(53);
-    const fade = 1 - clamp((tf - 8) / 12);
     ctx.globalCompositeOperation = "lighter";
     for (let k = 0; k < 3; k++) {
       const tt = tf - k * 3;
       if (tt < 0) continue;
-      const r = Math.min(150, 16 + tt * (22 - k * 4) * Math.exp(-tt / 30));
-      const a = Math.exp(-tt / 9) * fade;
+      const r = 16 + tt * (16 - k * 3) * Math.exp(-tt / 30);
+      const a = Math.exp(-tt / 8);
       ctx.strokeStyle = withAlpha(k === 1 ? C.cyan : k === 2 ? C.magenta : "#ffffff", a * 0.9);
-      ctx.lineWidth = 2 + 11 * a;
+      ctx.lineWidth = 2 + 10 * a;
       ctx.beginPath();
       ctx.ellipse(x, y, r, r * 0.5, 0, 0, TAU);
       ctx.stroke();
     }
-    glow(ctx, x, y, 420, C.cyan, 0.55 * Math.exp(-Math.max(0, tf) / 7), 0.03);
-    glow(ctx, x, y - 120, 900, C.ice, 0.35 * Math.exp(-Math.max(0, tf) / 4), 0.03);
-    glow(ctx, x, y, 90, C.white, 0.9 * Math.exp(-Math.max(0, tf) / 4), 0.1);
-    // shards of the old ceiling
-    for (let q = 0; q < 70; q++) {
-      const t = Math.max(0, tf);
-      const an = -Math.PI / 2 + (hash(q * 4.7) - 0.5) * 2.6;
-      const v = 6 + 20 * hash(q * 2.1);
-      const d = (v / 0.08) * (1 - Math.exp(-0.08 * t));
-      const life = 1 - t / (16 + 14 * hash(q * 3.3));
-      if (life <= 0) continue;
-      glow(ctx, x + Math.cos(an) * d, y + Math.sin(an) * d * 0.8 + 0.2 * t * t, 2 + 4 * hash(q), q % 3 ? C.cyan : "#ffffff", life);
-    }
-    ctx.globalCompositeOperation = "source-over";
-  }
-  // ...and keeps streaming upward: it is still growing
-  if (tf >= 0) {
-    const sa = clamp(tf / 4);
-    ctx.globalCompositeOperation = "lighter";
+    glow(ctx, x, y, 360, C.cyan, 0.5 * Math.exp(-tf / 7), 0.03);
+    glow(ctx, x, y, 90, C.white, 0.9 * Math.exp(-tf / 4), 0.1);
     for (let q = 0; q < 60; q++) {
-      const k = 51 + (q % 3);
-      const span = 900;
-      const yy = TBASE - ((tf * (26 + 20 * hash(q * 1.9)) + hash(q * 7.7) * span) % span);
-      const top = TBASE - barH(k, f);
-      if (yy < top - 5) continue;
-      glow(ctx, barX(k) + (hash(q * 3.1) - 0.5) * BW * 0.7, yy, 3 + 4 * hash(q), q % 2 ? hot(k / 53) : "#ffffff", 0.75 * sa);
+      const an = -Math.PI / 2 + (hash(q * 4.7) - 0.5) * 2.6;
+      const v = 5 + 15 * hash(q * 2.1);
+      const d = (v / 0.08) * (1 - Math.exp(-0.08 * tf));
+      const life = 1 - tf / (14 + 12 * hash(q * 3.3));
+      if (life <= 0) continue;
+      glow(ctx, x + Math.cos(an) * d, y + Math.sin(an) * d * 0.8 + 0.2 * tf * tf, 2 + 4 * hash(q), q % 3 ? C.cyan : "#ffffff", life);
     }
     ctx.globalCompositeOperation = "source-over";
   }
+  drawSpan(ctx, f, a0);
+  drawBeam(ctx, f);
+  // after the beam: embers keep lifting off the hot upper half of the ramp
+  if (f > HIT - 6) {
+    const ea = clamp((f - HIT + 6) / 10);
+    ctx.globalCompositeOperation = "lighter";
+    for (let q = 0; q < 56; q++) {
+      const k = 22 + Math.floor(hash(q * 1.9) * 32);
+      const lifeT = 26 + 20 * hash(q * 5.1);
+      const ph = (f - HIT + hash(q * 7.7) * lifeT) % lifeT;
+      const u = ph / lifeT;
+      const x = barX(k) + (hash(q * 3.1) - 0.5) * PITCH * 1.4 + Math.sin(ph * 0.2 + q) * 4;
+      const y = TBASE - bhLog(k) - 10 - u * (60 + 50 * hash(q * 2.7));
+      glow(ctx, x, y, 2 + 3 * hash(q), q % 3 ? hot(k / 53) : "#ffffff", Math.sin(u * Math.PI) * 0.8 * ea * a0);
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+};
+
+/** "1946 ←—— 78 年 ——→ 2024": a span drawn along the year row in step with the light wave. */
+const SPAN_Y = TBASE + 52;
+const SPAN_X0 = TX0 + 92;
+const SPAN_X1 = TX1 - 92;
+const SPAN_MID = (SPAN_X0 + SPAN_X1) / 2;
+const SPAN_GAP = 84; // half-width of the hole the "78 年" label sits in
+const spanP = (f: number) => ease.inOutSine(prog(f, FULL, FULL + SWEEP_LEN));
+const drawSpan = (ctx: CanvasRenderingContext2D, f: number, a0: number) => {
+  const p = spanP(f);
+  if (p <= 0) return;
+  // drawn outward from the middle to both ends
+  const half = (SPAN_MID - SPAN_X0) * p;
+  ctx.save();
+  ctx.globalAlpha = a0;
+  const lg = ctx.createLinearGradient(SPAN_X0, 0, SPAN_X1, 0);
+  lg.addColorStop(0, withAlpha(C.amber, 0.85));
+  lg.addColorStop(0.5, withAlpha("#ffffff", 0.7));
+  lg.addColorStop(1, withAlpha(C.cyan, 0.85));
+  ctx.fillStyle = lg;
+  const l0 = SPAN_MID - half;
+  const r1 = SPAN_MID + half;
+  if (SPAN_MID - SPAN_GAP > l0) ctx.fillRect(l0, SPAN_Y - 1, SPAN_MID - SPAN_GAP - l0, 2);
+  if (r1 > SPAN_MID + SPAN_GAP) ctx.fillRect(SPAN_MID + SPAN_GAP, SPAN_Y - 1, r1 - SPAN_MID - SPAN_GAP, 2);
+  // arrow heads once the span reaches the ends
+  const ah = clamp((p - 0.92) / 0.08);
+  if (ah > 0) {
+    ctx.strokeStyle = lg;
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = a0 * ah;
+    for (const [x, d] of [
+      [SPAN_X0, 1],
+      [SPAN_X1, -1],
+    ]) {
+      ctx.beginPath();
+      ctx.moveTo(x + d * 12, SPAN_Y - 8);
+      ctx.lineTo(x, SPAN_Y);
+      ctx.lineTo(x + d * 12, SPAN_Y + 8);
+      ctx.stroke();
+    }
+  }
+  // the two running heads
+  if (p < 1) {
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = 1;
+    glow(ctx, l0, SPAN_Y, 26, C.amber, 0.8 * a0);
+    glow(ctx, r1, SPAN_Y, 26, C.cyan, 0.8 * a0);
+  }
+  ctx.restore();
+};
+
+/** The 54th doubling's light travels from the top block up into the "2亿亿" headline. */
+const drawBeam = (ctx: CanvasRenderingContext2D, f: number) => {
+  const t = f - BEAM0;
+  if (t < 0 || t > BEAM_LEN + 34) return;
+  const head = ease.inOutCubic(clamp(t / BEAM_LEN));
+  const tail = ease.inOutCubic(clamp((t - 5) / BEAM_LEN));
+  const fade = 1 - clamp((t - BEAM_LEN) / 6);
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineCap = "round";
+  if (fade > 0 && head > tail) {
+    // one continuous path per layer (no overlapping caps), fading in from the tail to the head
+    const N = 30;
+    const pts = Array.from({ length: N + 1 }, (_, i) => beamPt(lerp(tail, head, i / N)));
+    const p0 = pts[0];
+    const p1 = pts[N];
+    const col = mix(C.cyan, C.gold, head);
+    const layer = (c: string, a: number, wdt: number) => {
+      const g = ctx.createLinearGradient(p0.x, p0.y, p1.x, p1.y);
+      g.addColorStop(0, withAlpha(c, 0));
+      g.addColorStop(0.6, withAlpha(c, a * 0.45));
+      g.addColorStop(1, withAlpha(c, a));
+      ctx.strokeStyle = g;
+      ctx.lineWidth = wdt;
+      ctx.beginPath();
+      pts.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
+      ctx.stroke();
+    };
+    ctx.lineJoin = "round";
+    layer(col, 0.14 * fade, 46);
+    layer(col, 0.42 * fade, 14);
+    layer(mix(col, "#ffffff", 0.7), fade, 5);
+    const h = beamPt(head);
+    glow(ctx, h.x, h.y, 220, mix(C.cyan, C.gold, head), 0.75 * fade, 0.05);
+    glow(ctx, h.x, h.y, 44, C.white, fade);
+    // sparks shed behind the head
+    for (let q = 0; q < 26; q++) {
+      const back = hash(q * 3.3) * 0.22;
+      const pt = beamPt(clamp(head - back));
+      const age = back / 0.22;
+      glow(ctx, pt.x + (hash(q * 5.1) - 0.5) * 30 * age, pt.y + (hash(q * 7.9) - 0.5) * 30 * age + 20 * age * age, 2 + 3 * hash(q), q % 2 ? C.gold : C.white, (1 - age) * fade);
+    }
+  }
+  // the launch flare on the top block
+  const l = Math.exp(-t / 5);
+  const b0 = beamPt(0);
+  glow(ctx, b0.x, b0.y, 200, C.cyan, 0.5 * l, 0.04);
+  // arrival: the headline takes the hit
+  const th = f - HIT;
+  if (th >= 0) {
+    const a = Math.exp(-th / 8);
+    glow(ctx, HEAD.x, HEAD.y - 30, 420, C.gold, 0.3 * a, 0.03);
+    glow(ctx, HEAD.x, HEAD.y - 30, 140, C.white, 0.7 * Math.exp(-th / 4), 0.1);
+    // rings roll out from just outside the whole headline block, so none crosses its text
+    for (let k = 0; k < 3; k++) {
+      const tt = th - k * 3;
+      if (tt < 0) continue;
+      const rx = HEAD_RX + tt * (26 - k * 5) * Math.exp(-tt / 30);
+      const ra = Math.exp(-tt / 7);
+      ctx.strokeStyle = withAlpha(k === 1 ? C.magenta : k === 2 ? C.cyan : mix(C.gold, "#ffffff", 0.5), 0.8 * ra);
+      ctx.lineWidth = 2 + 9 * ra;
+      ctx.beginPath();
+      ctx.ellipse(960, HEAD.y - 26, rx, rx * 0.36, 0, 0, TAU);
+      ctx.stroke();
+    }
+    for (let q = 0; q < 90; q++) {
+      const an = hash(q * 2.9 + 0.4) * TAU;
+      const v = 6 + 16 * hash(q * 4.1);
+      const d = (v / 0.09) * (1 - Math.exp(-0.09 * th));
+      const life = 1 - th / (14 + 16 * hash(q * 3.7));
+      if (life <= 0) continue;
+      glow(ctx, HEAD.x + Math.cos(an) * d * 1.5, HEAD.y - 30 + Math.sin(an) * d * 0.5 + 0.15 * th * th, 2 + 4 * hash(q), q % 3 ? C.gold : "#ffffff", life);
+    }
+  }
+  ctx.restore();
 };
 
 /** Frame-wide chromatic aberration (px): the slam, and the last breath before it. Zero landings split per glyph instead. */
@@ -1235,6 +1480,8 @@ const Stage: React.FC = () => (
       drawExplosion(ctx, f);
       drawOpening(ctx, f);
       drawEmber(ctx, f);
+      drawPing(ctx, f);
+      drawImpactRings(ctx, f);
       if (f < GAP) drawNumber(ctx, f, L);
       drawImpacts(ctx, f);
       drawDebris(ctx, f);
@@ -1274,13 +1521,17 @@ const EniacLabels: React.FC = () => {
   const a = ease.outCubic(prog(f, 10, 32)) * e.a;
   if (a <= 0) return null;
   const rise = 1 - ease.outCubic(prog(f, 10, 34));
+  // the labels kick with the ember when it pings the big number
+  const tp = f - PING;
+  const pk = tp < -5 || tp > 30 ? 0 : tp < 0 ? 0.4 * ease.inQuad((tp + 5) / 5) : Math.exp(-tp / 7);
   return (
     <div
       style={{
         position: "absolute",
         left: e.x,
         top: e.y + 72 * e.s + 10 + rise * 16,
-        transform: `translateX(-50%) scale(${e.ls})`,
+        transform: `translateX(-50%) scale(${e.ls * (1 + 0.12 * pk)})`,
+        filter: pk > 0.02 ? `brightness(${1 + 0.6 * pk})` : undefined,
         transformOrigin: "50% 0",
         textAlign: "center",
         opacity: a,
@@ -1317,8 +1568,9 @@ const AiLabels: React.FC = () => {
         style={{
           position: "absolute",
           right: 1920 - L.right,
-          // sits just clear of the biggest zero still flying in from the camera
-          top: NY - half * S_FLY - 70,
+          // sits just clear of the biggest zero still flying in from the camera; once the last zero
+          // is in, it settles down close to the finished number it labels
+          top: lerp(NY - half * S_FLY - 64, NY - half - 92, ease.inOutCubic(prog(f, LAST_Z + 1, LAST_Z + 12))),
           display: "flex",
           alignItems: "center",
           gap: 14,
@@ -1362,27 +1614,23 @@ const SHEEN1 = GAP + 70;
 const GapText: React.FC<{ ink?: string; dx?: number }> = ({ ink, dx = 0 }) => {
   const f = useCurrentFrame();
   const g = f - GAP;
-  if (g < -5) return null;
-  if (ink && g < 0) return null;
-  const pin = clamp((g + 5) / 5);
-  // a ghost rushes in from the camera over the last breath, then the slam overshoots and recoils
-  const s0 =
-    g < 0
-      ? 1 + 2 * Math.pow(1 - pin, 2)
-      : 1 + 0.16 * Math.exp(-g / 3.5) * Math.cos(g * 0.7) + 0.06 * ease.inOutSine(prog(f, GAP + 12, DOUBLING - 32));
+  if (g < 0) return null;
+  // the slam overshoots and recoils, then the text keeps swelling slowly through the hold
+  const s0 = 1 + 0.16 * Math.exp(-g / 3.5) * Math.cos(g * 0.7) + 0.07 * ease.inOutSine(prog(f, GAP + 12, DOUBLING - 32));
   const hd = ease.inOutCubic(prog(f, DOUBLING - 32, DOUBLING - 4));
-  const scale = s0 * lerp(1, 0.46, hd) * (1 + 0.04 * Math.exp(-Math.max(0, f - FULL) / 6) * (f >= FULL ? 1 : 0));
+  // the 54th doubling's beam lands in it: a recoil-free swell and a flare
+  const th = f - HIT;
+  const hitK = th >= 0 ? Math.exp(-th / 7) : 0;
+  const scale = s0 * lerp(1, 0.46, hd) * (1 + 0.08 * hitK * (1 - Math.exp(-Math.max(0, th) * 1.2)));
   const cy = lerp(GY - 10, 176, hd);
-  const a = ink ? 1 : g < 0 ? 0.55 * Math.pow(pin, 1.3) : 1;
-  const blur = !ink && g < 0 ? (1 - pin) * 16 + 2 : 0;
   const sub = ease.outCubic(prog(f, GAP + 24, GAP + 42));
   const shimmer = (f * 1.4) % 200;
-  const glowK = Math.exp(-Math.max(0, g) / 12);
-  const sheenP = prog(f, SHEEN0, SHEEN1);
+  const glowK = Math.max(Math.exp(-g / 12), 0.9 * hitK);
+  const sheenP = f < DOUBLING ? prog(f, SHEEN0, SHEEN1) : prog(f, HIT - 1, HIT + 15);
   const sheenOn = !ink && sheenP > 0 && sheenP < 1;
   const big: React.CSSProperties = { fontFamily: FONT_CN, fontWeight: 900, fontSize: 264, lineHeight: 1.05, letterSpacing: "0.01em" };
   return (
-    <AbsoluteFill style={{ opacity: a }}>
+    <AbsoluteFill>
       <div
         style={{
           position: "absolute",
@@ -1394,7 +1642,6 @@ const GapText: React.FC<{ ink?: string; dx?: number }> = ({ ink, dx = 0 }) => {
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          filter: blur > 0.3 ? `blur(${blur}px)` : undefined,
         }}
       >
         <div style={{ display: "flex", alignItems: "baseline", gap: 30, whiteSpace: "nowrap" }}>
@@ -1452,7 +1699,7 @@ const GapText: React.FC<{ ink?: string; dx?: number }> = ({ ink, dx = 0 }) => {
             color: "#fff",
             opacity: ink ? 0 : sub,
             transform: `translateY(${(1 - sub) * 24}px)`,
-            textShadow: `0 0 22px ${C.gold}, 0 3px 10px #000`,
+            textShadow: `0 0 22px ${C.gold}, 0 3px 10px #000, 0 0 34px rgba(0,0,0,0.9)`,
             whiteSpace: "nowrap",
           }}
         >
@@ -1516,14 +1763,14 @@ const DoubleHud: React.FC = () => {
   if (f < DOUBLING - 26) return null;
   const n = Math.max(1, doublings(f));
   const last = DT[n - 1];
-  const pop = 1 + 0.13 * Math.exp(-Math.max(0, f - last) / 3);
-  const done = f >= DT[53] ? ease.outCubic(prog(f, DT[53], DT[53] + 10)) : 0;
+  // every doubling kicks the count; the 54th kicks it hardest and leaves it glowing
+  const pop = 1 + (f >= FULL ? 0.24 : 0.13) * Math.exp(-Math.max(0, f - last) / (f >= FULL ? 5 : 3));
+  const done = f >= FULL ? ease.outCubic(prog(f, FULL, FULL + 10)) : 0;
   const yrA = ease.outCubic(prog(f, DOUBLING - 26, DOUBLING - 14));
   // the comet head has faded by now, so "2024" never comes up under its glare
   const yrB = ease.outBack(prog(f, DOUBLING + 6, DOUBLING + 16));
-  // the legend swaps (out, then in: never both at once) as the blocks are re-plotted
-  const swOut = ease.inCubic(prog(f, REPLOT - 5, REPLOT - 1));
-  const sw = ease.outCubic(prog(f, REPLOT, REPLOT + 6));
+  // "78 年" pops into the middle of the span as it starts drawing outward
+  const spA = ease.outBack(prog(f, FULL + 1, FULL + 8));
   return (
     <AbsoluteFill>
       <div style={{ position: "absolute", left: TX0, top: 318, opacity: a, whiteSpace: "nowrap" }}>
@@ -1548,15 +1795,30 @@ const DoubleHud: React.FC = () => {
           </span>
           <span style={{ fontFamily: FONT_CN, fontWeight: 900, fontSize: 60, color: "#fff", textShadow: "0 2px 10px #000" }}>次</span>
         </div>
-        <div style={{ position: "relative", marginTop: 10, height: 40 }}>
-          <div style={{ position: "absolute", left: 0, top: 0, opacity: 1 - swOut, transform: `translateY(${-10 * swOut}px)`, fontFamily: FONT_CN, fontWeight: 700, fontSize: 30, color: "rgba(255,255,255,0.75)", letterSpacing: "0.08em", textShadow: "0 2px 8px #000" }}>
-            每一格 = 算力 <span style={{ fontFamily: FONT_MONO, fontWeight: 800, color: C.gold }}>×2</span>
-          </div>
-          <div style={{ position: "absolute", left: 0, top: 0, opacity: sw, transform: `translateY(${(1 - sw) * 10}px)`, fontFamily: FONT_CN, fontWeight: 900, fontSize: 30, color: C.cyan, letterSpacing: "0.08em", textShadow: `0 0 14px ${C.cyan}, 0 2px 8px #000` }}>
-            换成真实比例
-          </div>
+        <div style={{ marginTop: 10, fontFamily: FONT_CN, fontWeight: 700, fontSize: 30, color: "rgba(255,255,255,0.75)", letterSpacing: "0.08em", textShadow: "0 2px 8px #000" }}>
+          每一格 = 算力 <span style={{ fontFamily: FONT_MONO, fontWeight: 800, color: C.gold }}>×2</span>
         </div>
       </div>
+      {spA > 0 ? (
+        <div
+          style={{
+            position: "absolute",
+            left: SPAN_MID,
+            top: SPAN_Y,
+            transform: `translate(-50%, -50%) scale(${0.5 + 0.5 * spA})`,
+            opacity: clamp(spA),
+            whiteSpace: "nowrap",
+            display: "flex",
+            alignItems: "baseline",
+            gap: 8,
+            textShadow: `0 0 16px ${C.gold}, 0 2px 8px #000, 0 0 20px rgba(0,0,0,0.9)`,
+            color: "#fff",
+          }}
+        >
+          <span style={{ fontFamily: FONT_MONO, fontWeight: 800, fontSize: 40 }}>78</span>
+          <span style={{ fontFamily: FONT_CN, fontWeight: 900, fontSize: 34 }}>年</span>
+        </div>
+      ) : null}
       <div style={{ position: "absolute", left: TX0 - 10, top: TBASE + 30, opacity: yrA, transform: `translateY(${(1 - yrA) * 12}px)`, fontFamily: FONT_MONO, fontWeight: 800, fontSize: 34, color: C.amber, textShadow: `0 0 14px ${C.ember}, 0 2px 6px #000` }}>
         1946
       </div>
@@ -1585,8 +1847,24 @@ const pushAt = (f: number) => {
     const P = 1 + 0.07 * ease.inOutSine(prog(f, 0, 86)) * (1 - ease.inOutCubic(prog(f, 84, 102)));
     return { P, fx: EA.x, fy: EA.y };
   }
-  if (f < GAP) return { P: 1 + 0.04 * ease.inOutCubic(prog(f, PUSH0, INHALE + 2)), fx: 955, fy: NY };
-  return { P: 1, fx: 960, fy: 540 };
+  // (centred on the finished number, so even pushed in it keeps > 60 px from both frame edges)
+  if (f < GAP) return { P: 1 + 0.03 * ease.inOutCubic(prog(f, PUSH0, INHALE + 2)), fx: 960, fy: NY };
+  if (f < DOUBLING - 8) {
+    // a slow push onto the slam text while it holds, easing back out as the text docks at the top
+    const P = 1 + 0.05 * ease.inOutSine(prog(f, GAP + 14, DOUBLING - 36)) * (1 - ease.inOutCubic(prog(f, DOUBLING - 36, DOUBLING - 8)));
+    return { P, fx: 960, fy: GY };
+  }
+  // and a last gentle push once the ramp is complete
+  return { P: 1 + 0.03 * ease.inOutSine(prog(f, FULL - 6, DUR)), fx: 960, fy: 470 };
+};
+/** A small zoom punch on every zero landing (bigger on the "1" and the last zero). */
+const landPunch = (f: number) => {
+  let k = 0;
+  for (const im of IMPACTS) {
+    const d = f - im.t;
+    if (d >= 0 && d < 20) k = Math.max(k, (im.i === 0 || im.i === ND - 1 ? 0.035 : 0.018) * Math.exp(-d / 4));
+  }
+  return k;
 };
 
 export const Compare: React.FC = () => {
@@ -1597,7 +1875,8 @@ export const Compare: React.FC = () => {
     shake(f, ZEROS, 16, 14),
     ...ZT.map((t, i) => shake(f, t, 5 + i * 0.5 + (i === ZT.length - 1 ? 10 : 0), 10 + (i === ZT.length - 1 ? 6 : 0))),
     shake(f, SUFFIX, 14, 14),
-    shake(f, FULL, 26, 20),
+    shake(f, FULL, 12, 14),
+    shake(f, HIT, 9, 12),
   );
   const ss = slamShake(f);
   // high-frequency rattle right at the slam + pre-slam tremble
@@ -1605,7 +1884,7 @@ export const Compare: React.FC = () => {
   const tremble = inhale * 7;
   const rx = sh.x + ss.x + (hash(f * 1.37) - 0.5) * 2 * (rattle + tremble);
   const ry = sh.y + ss.y + (hash(f * 2.11 + 4) - 0.5) * 2 * (rattle + tremble);
-  const zoomPunch = g >= 0 ? 1 + 0.1 * Math.exp(-g / 6) : 1 - 0.03 * inhale;
+  const zoomPunch = g >= 0 ? 1 + 0.1 * Math.exp(-g / 6) : (1 + landPunch(f)) * (1 - 0.03 * inhale);
   const rot = sh.r * 0.12 + ss.r;
   // overscan: the smallest scale at which the shaken, rotated stage (with its margin) still covers the frame
   let cover = 0;

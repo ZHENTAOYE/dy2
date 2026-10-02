@@ -435,10 +435,19 @@ const drawTrayPart = (g: G, c: Cam, f: number, vlo: number, vhi: number) => {
     const t = f - gpuAt(mi);
     const ign = mi === 0 ? 1 : clamp(t / 4);
     const fl = 0.75 + 0.25 * Math.sin(f * 0.3 + mc * 40 + mr * 17);
-    glow(g, p.x, p.y, 0.055 * p.s, C.cyan, (0.1 + 0.4 * ign) * fl);
-    if (t > 0 && t < 14 && mi > 0) {
-      const k = 1 - t / 14;
-      glow(g, p.x, p.y, 0.09 * p.s * (1.2 - k * 0.6), "#ffffff", 0.55 * k);
+    glow(g, p.x, p.y, 0.06 * p.s, C.cyan, (0.08 + 0.5 * ign) * fl);
+    glow(g, p.x, p.y, 0.022 * p.s, "#e8fbff", 0.45 * ign * fl);
+    if (t >= 0 && t < 20 && mi > 0) {
+      // ignition: a hot white bloom + a cyan shock ring
+      const k = Math.pow(1 - t / 20, 2);
+      glow(g, p.x, p.y, 0.24 * p.s * (1 - 0.35 * k), "#ffffff", 0.7 * k);
+      glow(g, p.x, p.y, 0.5 * p.s, C.cyan, 0.32 * k, 0.05);
+      const rr = (0.03 + 0.12 * (1 - k)) * p.s;
+      g.strokeStyle = withAlpha("#bff4ff", 0.8 * k);
+      g.lineWidth = 2 + 4 * k;
+      g.beginPath();
+      g.ellipse(p.x, p.y, rr, rr * Math.max(0.3, Math.abs(c.sp)), 0, 0, Math.PI * 2);
+      g.stroke();
     }
   }
   g.restore();
@@ -486,7 +495,9 @@ const nvSwitchTop = (g: G, c: Cam, f: number, u: number, y: number, v: number, w
   quad(g, c, [[u - w * 0.3, y, v - w * 0.3], [u + w * 0.3, y, v - w * 0.3], [u + w * 0.3, y, v + w * 0.3], [u - w * 0.3, y, v + w * 0.3]], "#2a2550");
   g.save();
   g.globalCompositeOperation = "lighter";
-  const fl = 0.75 + 0.25 * Math.sin(f * 0.4 + u * 50);
+  // kept out of the caption band until the chip caption has gone
+  const band = Math.max(clamp((800 - p.y) / 160), clamp((f - 258) / 10));
+  const fl = (0.75 + 0.25 * Math.sin(f * 0.4 + u * 50)) * band;
   glow(g, p.x, p.y, r * 3.2, C.violet, 0.55 * fl);
   glow(g, p.x, p.y, r * 1.1, "#e6d8ff", 0.5 * fl);
   g.restore();
@@ -549,8 +560,10 @@ const nvlink = (g: G, c: Cam, f: number, tu: number, tv: number, V0: number, V1:
       if (!ok) continue;
       const col = si % 2 ? C.violet : C.cyan;
       const w = clamp(0.0016 * sp[0].s, 0.6, 2.4);
-      g.strokeStyle = withAlpha(col, 0.1 + 0.22 * ign);
-      g.lineWidth = w * 2.6;
+      const bt = f - gpuAt(MOD_ORDER.indexOf(mi));
+      const burst = bt >= 0 && bt < 16 && MOD_ORDER.indexOf(mi) > 0 ? 1 - bt / 16 : 0;
+      g.strokeStyle = withAlpha(col, 0.1 + 0.22 * ign + 0.5 * burst);
+      g.lineWidth = w * (2.6 + 2 * burst);
       g.beginPath();
       g.moveTo(sp[0].x, sp[0].y);
       for (let i = 1; i < sp.length; i++) g.lineTo(sp[i].x, sp[i].y);
@@ -564,6 +577,17 @@ const nvlink = (g: G, c: Cam, f: number, tu: number, tv: number, V0: number, V1:
       for (let i = 1; i < sp.length; i++) seg.push(seg[i - 1] + Math.hypot(sp[i].x - sp[i - 1].x, sp[i].y - sp[i - 1].y));
       const L = seg[seg.length - 1];
       if (L < 4) continue;
+      if (burst > 0) {
+        // the freshly lit GPU fires a bright packet down each of its links to the switches
+        const d = Math.min(1, bt / 10) * L;
+        let i = 1;
+        while (i < seg.length - 1 && seg[i] < d) i++;
+        const e = (d - seg[i - 1]) / Math.max(1e-6, seg[i] - seg[i - 1]);
+        const x = sp[i - 1].x + (sp[i].x - sp[i - 1].x) * e;
+        const yy = sp[i - 1].y + (sp[i].y - sp[i - 1].y) * e;
+        glow(g, x, yy, clamp(0.03 * sp[0].s, 8, 46), mix(col, "#ffffff", 0.3), burst);
+        glow(g, x, yy, clamp(0.008 * sp[0].s, 3, 12), "#ffffff", burst);
+      }
       for (let q = 0; q < 2; q++) {
         let t = (f * (0.018 + 0.01 * hash(k * 1.7)) + hash(k * 3.3 + q * 0.5) + q * 0.5) % 1;
         if (q === 1) t = 1 - t;
@@ -633,15 +657,29 @@ const ledBars = (g: G, f: number, p00: P2, p10: P2, p01: P2, p11: P2, id: number
   }
 };
 
+/** Neighbours go dark while the focus rack lights up tray by tray, then light up in a ripple spreading from it. */
+export const DIM_T: [number, number] = [348, 376];
+export const RIPPLE_T = 414;
+const RIPPLE_V = 1.5; // metres per frame
+const nbAt = (f: number, rk: Rack) => {
+  if (rk.focus) return 1;
+  const down = clamp((f - DIM_T[0]) / (DIM_T[1] - DIM_T[0]));
+  if (down <= 0) return 1;
+  const dist = Math.hypot(rk.u - RACK_U, rk.v - RACK_FRONT);
+  const up = clamp((f - RIPPLE_T - dist / RIPPLE_V) / 6);
+  return 0.22 + 0.78 * (1 - down * (1 - up)) + 1.6 * up * (1 - up);
+};
+
 const drawRack = (g: G, c: Cam, f: number, rk: Rack, pc: P2, trayOut: boolean) => {
   const u0 = rk.u - RACK_W / 2;
   const u1 = rk.u + RACK_W / 2;
   const v1 = rk.v;
   const v0 = rk.v - RACK_DEPTH;
   const px = RACK_W * pc.s;
+  const nb = nbAt(f, rk);
   if (px < 2.2) {
     const fl = 0.55 + 0.45 * hash(rk.id * 1.3 + Math.floor(f / 5 + hash(rk.id) * 5));
-    g.fillStyle = withAlpha(mix(C.cyan, C.blue, hash(rk.id * 0.7)), 0.75 * fl * clamp(px / 1.2));
+    g.fillStyle = withAlpha(mix(C.cyan, C.blue, hash(rk.id * 0.7)), Math.min(1, 0.75 * fl * clamp(px / 1.2) * nb));
     const sz = Math.max(1.2, px);
     g.fillRect(pc.x - sz / 2, pc.y - sz / 2, sz, sz);
     return;
@@ -665,12 +703,18 @@ const drawRack = (g: G, c: Cam, f: number, rk: Rack, pc: P2, trayOut: boolean) =
     f11 = P(c, u1, FLOOR_Y, v1);
   }
   if (front && f00 && f10 && f01 && f11) {
+    if (px > 5) floorReflection(g, c, f, rk, nb, px);
     if (px > 40) {
       const mp = rackFrontMips();
       const fh = Math.max(Math.abs(f01.y - f00.y), Math.abs(f11.y - f10.y));
       let lv = 0;
       while (lv < mp.length - 1 && mp[lv + 1].height >= fh * 1.1) lv++;
       texQuad(g, mp[lv], mp[lv].width, mp[lv].height, f00, f10, f01, f11);
+      if (nb < 0.98) {
+        path(g, [f00, f10, f11, f01]);
+        g.fillStyle = `rgba(1,3,7,${0.5 * clamp(1 - nb)})`;
+        g.fill();
+      }
       if (trayOut) {
         // the top slot is open: dark recess
         const a = bil(f00, f10, f01, f11, 0.05, 0.021 / 2.09);
@@ -690,17 +734,32 @@ const drawRack = (g: G, c: Cam, f: number, rk: Rack, pc: P2, trayOut: boolean) =
         const t0 = (0.021 + k * TRAY_PITCH) / 2.09;
         const t1 = (0.199 + k * TRAY_PITCH) / 2.09;
         const ig = rk.focus ? trayIgn(f, k) : 1;
-        if (rk.focus || px > 90) gpuLedsFace(g, f, f00, f10, f01, f11, rk.id * 9 + k, t0, t1, rk.focus ? 0.12 + 1.25 * ig : 1);
-        const ft = rk.focus ? f - trayAt(k) : -1;
-        if (ft > 0 && ft < 12 && k > 0) {
-          const a = bil(f00, f10, f01, f11, 0.05, (t0 + t1) / 2);
-          const b = bil(f00, f10, f01, f11, 0.95, (t0 + t1) / 2);
+        if (rk.focus || px > 90) gpuLedsFace(g, f, f00, f10, f01, f11, rk.id * 9 + k, t0, t1, rk.focus ? 0.12 + 1.25 * ig : nb);
+        if (rk.focus && ig > 0) {
+          const a = bil(f00, f10, f01, f11, 0.1, t0 + (0.036 / 2.09));
+          const b = bil(f00, f10, f01, f11, 0.9, t0 + (0.036 / 2.09));
           g.save();
           g.globalCompositeOperation = "lighter";
           glowStroke(g, () => {
             g.moveTo(a.x, a.y);
             g.lineTo(b.x, b.y);
-          }, C.cyan, 2.5, 1 - ft / 12);
+          }, C.cyan, Math.max(1.5, px * 0.012), 0.55 * ig);
+          g.restore();
+        }
+        const ft = rk.focus ? f - trayAt(k) : -1;
+        if (ft >= 0 && ft < 16 && k > 0) {
+          // the tray ignites: a white-hot scan across its LED row + a bloom
+          const kk = Math.pow(1 - ft / 16, 2);
+          const a = bil(f00, f10, f01, f11, 0.05, (t0 + t1) / 2);
+          const b = bil(f00, f10, f01, f11, 0.95, (t0 + t1) / 2);
+          const m = bil(f00, f10, f01, f11, 0.5, (t0 + t1) / 2);
+          g.save();
+          g.globalCompositeOperation = "lighter";
+          glowStroke(g, () => {
+            g.moveTo(a.x, a.y);
+            g.lineTo(b.x, b.y);
+          }, C.cyan, 3 + 3 * kk, kk);
+          glow(g, m.x, m.y, Math.hypot(b.x - a.x, b.y - a.y) * (0.7 - 0.2 * kk), "#bff4ff", 0.55 * kk, 0.06);
           g.restore();
         }
       }
@@ -708,7 +767,18 @@ const drawRack = (g: G, c: Cam, f: number, rk: Rack, pc: P2, trayOut: boolean) =
         g.save();
         g.globalCompositeOperation = "lighter";
         g.lineWidth = Math.max(1.2, px * 0.02);
-        ledBars(g, f, f00, f10, f01, f11, rk.id, 0.95);
+        ledBars(g, f, f00, f10, f01, f11, rk.id, Math.min(1, 0.95 * nb));
+        g.restore();
+      }
+      if (rk.focus && f < 470) {
+        focusCables(g, f, f00, f10, f01, f11, pc.s, 1 - clamp((f - 436) / 30));
+        let lit = 0;
+        for (let k = 0; k < 9; k++) lit += trayIgn(f, k);
+        const m = bil(f00, f10, f01, f11, 0.5, 0.42);
+        const hgt = Math.hypot(f01.x - f00.x, f01.y - f00.y);
+        g.save();
+        g.globalCompositeOperation = "lighter";
+        glow(g, m.x, m.y, hgt * 0.75, C.cyan, (0.05 + 0.1 * (lit / 9)) * clamp((f - DIM_T[0]) / 20) * (1 - clamp((f - 450) / 30)), 0.04);
         g.restore();
       }
       // switch / power LEDs
@@ -728,7 +798,7 @@ const drawRack = (g: G, c: Cam, f: number, rk: Rack, pc: P2, trayOut: boolean) =
       g.save();
       g.globalCompositeOperation = "lighter";
       g.lineWidth = Math.max(1, px * 0.025);
-      ledBars(g, f, f00, f10, f01, f11, rk.id, px > 8 ? 0.9 : 0.6);
+      ledBars(g, f, f00, f10, f01, f11, rk.id, Math.min(1, (px > 8 ? 0.9 : 0.6) * nb));
       g.restore();
     }
     // light spill: every rack front glows into the cold aisle
@@ -737,9 +807,9 @@ const drawRack = (g: G, c: Cam, f: number, rk: Rack, pc: P2, trayOut: boolean) =
       const fl = 0.8 + 0.2 * hash(rk.id * 2.3 + Math.floor(f / 6 + hash(rk.id) * 6));
       g.save();
       g.globalCompositeOperation = "lighter";
-      glow(g, cp.x, cp.y, Math.max(3, 1.25 * pc.s), C.cyan, 0.15 * fl * clamp(px / 6), 0.04);
+      glow(g, cp.x, cp.y, Math.max(3, 1.25 * pc.s), C.cyan, 0.15 * fl * clamp(px / 6) * nb, 0.04);
       const fp = P(c, rk.u, FLOOR_Y, v1 + 0.45);
-      if (fp) glow(g, fp.x, fp.y, Math.max(3, 0.8 * fp.s), "#4fc8ff", 0.12 * fl * clamp(px / 6), 0.04);
+      if (fp) glow(g, fp.x, fp.y, Math.max(3, 0.8 * fp.s), "#4fc8ff", 0.12 * fl * clamp(px / 6) * nb, 0.04);
       g.restore();
     }
     // seen from straight above (server beat) the neighbouring fronts sit in shadow
@@ -775,10 +845,145 @@ const drawRack = (g: G, c: Cam, f: number, rk: Rack, pc: P2, trayOut: boolean) =
   }
 };
 
+/** The polished floor of the cold aisle mirrors each rack's GPU status LEDs. */
+const floorReflection = (g: G, c: Cam, f: number, rk: Rack, nb: number, px: number) => {
+  const u0 = rk.u - RACK_W / 2;
+  const u1 = rk.u + RACK_W / 2;
+  const v = rk.v + 0.02;
+  const m = (y: number) => 2 * FLOOR_Y - y;
+  const a00 = P(c, u0, m(RACK_TOP), v);
+  const a10 = P(c, u1, m(RACK_TOP), v);
+  const a01 = P(c, u0, FLOOR_Y, v);
+  const a11 = P(c, u1, FLOOR_Y, v);
+  if (!a00 || !a10 || !a01 || !a11) return;
+  const ig = (k: number) => (rk.focus ? trayIgn(f, k) : Math.min(1, nb));
+  g.save();
+  g.globalCompositeOperation = "lighter";
+  g.lineCap = "round";
+  g.lineWidth = Math.max(1, px * 0.03);
+  for (let k = 0; k < 9; k++) {
+    const t = (0.021 + 0.036 + k * TRAY_PITCH) / 2.09;
+    const fade = (0.08 + 0.3 * t * t) * clamp(px / 14);
+    const l = bil(a00, a10, a01, a11, 0.1, t);
+    const r = bil(a00, a10, a01, a11, 0.9, t);
+    const busy = 0.6 + 0.4 * hash(rk.id * 3.1 + k * 7.7 + Math.floor(f / 4 + hash(rk.id + k) * 4));
+    g.strokeStyle = withAlpha(C.cyan, Math.min(1, fade * busy * ig(k)));
+    g.beginPath();
+    g.moveTo(l.x, l.y);
+    g.lineTo(r.x, r.y);
+    g.stroke();
+  }
+  // a soft sheen right at the foot of the rack
+  const fm = bil(a00, a10, a01, a11, 0.5, 0.93);
+  glow(g, fm.x, fm.y, Math.max(3, 0.55 * px), "#3fb8ff", 0.1 * Math.min(1.2, nb) * clamp(px / 10), 0.04);
+  g.restore();
+};
+
+/** The hero rack: glowing cable bundles down both posts, with packets racing along them. */
+const focusCables = (g: G, f: number, p00: P2, p10: P2, p01: P2, p11: P2, s: number, k: number) => {
+  if (k <= 0.01) return;
+  g.save();
+  g.globalAlpha = k;
+  g.globalCompositeOperation = "lighter";
+  g.lineCap = "round";
+  for (const side of [0, 1]) {
+    for (let i = 0; i < 3; i++) {
+      const xs = side ? 0.955 - i * 0.016 : 0.045 + i * 0.016;
+      const col = i % 2 ? C.magenta : C.cyan;
+      const pts: { x: number; y: number }[] = [];
+      for (let q = 0; q <= 12; q++) {
+        const t = 0.02 + (q / 12) * 0.88;
+        pts.push(bil(p00, p10, p01, p11, xs + Math.sin(t * 9 + i) * 0.004, t));
+      }
+      glowStroke(g, () => {
+        g.moveTo(pts[0].x, pts[0].y);
+        for (let q = 1; q < pts.length; q++) g.lineTo(pts[q].x, pts[q].y);
+      }, col, clamp(0.003 * s, 0.8, 1.6), 0.32);
+      for (let q = 0; q < 3; q++) {
+        const ph = (f * (0.02 + 0.008 * i) + q / 3 + side * 0.17 + i * 0.29) % 1;
+        const t = 0.02 + (side ? ph : 1 - ph) * 0.88;
+        const p = bil(p00, p10, p01, p11, xs, t);
+        glow(g, p.x, p.y, clamp(0.025 * s, 4, 12), mix(col, "#ffffff", 0.3), 0.75);
+      }
+    }
+  }
+  g.restore();
+};
+
 /** Full GPU LEDs for one tray slot of a rack face spanning [t0, t1] of the face height. */
 const gpuLedsFace = (g: G, f: number, p00: P2, p10: P2, p01: P2, p11: P2, seed: number, t0: number, t1: number, boost: number) => {
   const q = (p: { x: number; y: number }) => ({ x: p.x, y: p.y, s: 1, z: 1 });
   gpuLeds(g, f, q(bil(p00, p10, p01, p11, 0, t0)), q(bil(p00, p10, p01, p11, 1, t0)), q(bil(p00, p10, p01, p11, 0, t1)), q(bil(p00, p10, p01, p11, 1, t1)), seed, boost);
+};
+
+// ------------------------------------------------------------------ raised floor tiles near the camera
+const TILE = 0.6;
+let tileTex: HTMLCanvasElement[] | null = null;
+const floorTileTex = () => {
+  if (tileTex) return tileTex;
+  const make = (perf: boolean) => {
+    const c = mk(96, 96);
+    const g = c.getContext("2d")!;
+    const gr = g.createLinearGradient(0, 0, 96, 96);
+    gr.addColorStop(0, perf ? "#0e1a29" : "#0d141e");
+    gr.addColorStop(1, perf ? "#09121d" : "#090e15");
+    g.fillStyle = gr;
+    g.fillRect(0, 0, 96, 96);
+    g.fillStyle = "rgba(150,185,230,0.16)";
+    g.fillRect(0, 0, 96, 2);
+    g.fillRect(0, 0, 2, 96);
+    g.fillStyle = "rgba(0,0,0,0.55)";
+    g.fillRect(0, 93, 96, 3);
+    g.fillRect(93, 0, 3, 96);
+    if (perf) {
+      // perforations with cold air (and light) coming up through them
+      for (let y = 10; y < 88; y += 6)
+        for (let x = 10; x < 88; x += 6) {
+          g.fillStyle = "rgba(2,5,9,0.9)";
+          g.fillRect(x - 1.5, y - 1.5, 3, 3);
+          g.fillStyle = "rgba(80,175,255,0.32)";
+          g.fillRect(x - 0.8, y - 0.8, 1.6, 1.6);
+        }
+    }
+    return c;
+  };
+  tileTex = [make(false), make(true)];
+  return tileTex;
+};
+
+const floorTiles = (g: G, c: Cam) => {
+  if (c.y >= FLOOR_Y || c.D > 30) return;
+  const [tex0, tex1] = floorTileTex();
+  const cu = c.T[0];
+  const cv = -c.T[2];
+  const R = Math.min(14, 2.6 + 1.5 * c.D);
+  const i0 = Math.floor((cu - R - RACK_U) / TILE);
+  const i1 = Math.ceil((cu + R - RACK_U) / TILE);
+  const j0 = Math.floor((cv - R - RACK_FRONT) / TILE);
+  const j1 = Math.ceil((cv + R - RACK_FRONT) / TILE);
+  for (let j = j0; j <= j1; j++) {
+    const v0 = RACK_FRONT + j * TILE;
+    if (v0 < HALL_V0 || v0 + TILE > HALL_V1) continue;
+    const off = (((RACK_FRONT - v0 - TILE / 2) % ROW_PITCH) + ROW_PITCH) % ROW_PITCH;
+    const cold = ROW_PITCH - off < 1.25; // the two tiles in front of each row
+    for (let i = i0; i <= i1; i++) {
+      const u0 = RACK_U - RACK_W / 2 + i * TILE;
+      if (u0 < HALL_U0 || u0 + TILE > HALL_U1) continue;
+      const p00 = P(c, u0, FLOOR_Y, v0);
+      const p10 = P(c, u0 + TILE, FLOOR_Y, v0);
+      const p01 = P(c, u0, FLOOR_Y, v0 + TILE);
+      const p11 = P(c, u0 + TILE, FLOOR_Y, v0 + TILE);
+      if (!p00 || !p10 || !p01 || !p11) continue;
+      const xs = [p00.x, p10.x, p01.x, p11.x];
+      const ys = [p00.y, p10.y, p01.y, p11.y];
+      if (Math.max(...xs) < 0 || Math.min(...xs) > 1920 || Math.max(...ys) < 0 || Math.min(...ys) > 1080) continue;
+      const px = Math.max(Math.hypot(p10.x - p00.x, p10.y - p00.y), Math.hypot(p01.x - p00.x, p01.y - p00.y));
+      const a = clamp((px - 26) / 30);
+      if (a <= 0) continue;
+      const t = cold ? tex1 : tex0;
+      texQuad(g, t, 96, 96, p00, p10, p01, p11, a);
+    }
+  }
 };
 
 // ------------------------------------------------------------------ halls, cable trays, campus
@@ -834,7 +1039,7 @@ const hallFloor = (g: G, c: Cam, f: number, h: number) => {
         [u1 - 2, FLOOR_Y, vf + 1.2],
         [u0 + 2, FLOOR_Y, vf + 1.2],
       ],
-      withAlpha(C.cyan, 0.06 + 0.02 * Math.sin(f * 0.1 + r)),
+      withAlpha(C.cyan, 0.075 + 0.02 * Math.sin(f * 0.1 + r)),
     );
     void q;
   }
@@ -865,6 +1070,9 @@ const hallFloor = (g: G, c: Cam, f: number, h: number) => {
       g.lineTo(bot[i]!.x, bot[i]!.y);
     }
     g.stroke();
+    // a soft glow spilling up through the roof
+    const rc = P(c, (u0 + u1) / 2, ry, (v0 + v1) / 2);
+    if (rc) glow(g, rc.x, rc.y, Math.max(20, 22 * rc.s), "#3fb8ff", 0.12 * la, 0.04);
     // translucent walls
     g.fillStyle = withAlpha("#3a6aa8", 0.05 * la);
     for (let i = 0; i < 4; i++) {
@@ -901,6 +1109,7 @@ const drawSeg = (g: G, c: Cam, f: number, sg: Seg) => {
   const b = P(c, sg.u1, TRAY_Y, sg.v);
   if (!a || !b) return;
   g.save();
+  g.globalAlpha = 0.12 + 0.88 * clamp((Math.min(a.y, b.y) - 200) / 90);
   g.globalCompositeOperation = "lighter";
   g.lineCap = "round";
   g.strokeStyle = "rgba(90,110,140,0.3)";
@@ -967,28 +1176,50 @@ const campus = (g: G, c: Cam, f: number) => {
     ],
     "#0a0e14",
   );
-  // chiller yard along the far side
+  // chiller yard along the far side: fan decks with spinning blades, cold glow and status lights
   const cy0 = CAMPUS_V0 + 3;
+  const yardLights: [number, number, string, number][] = [];
   for (let i = 0; i < 22; i++) {
     const u = CAMPUS_U0 + 6 + i * 4.6;
-    box(g, c, u, u + 3.6, FLOOR_Y - 2.6, FLOOR_Y, cy0, cy0 + 9, "#1b222c", "#10151b", "#141a22");
+    box(g, c, u, u + 3.6, FLOOR_Y - 2.6, FLOOR_Y, cy0, cy0 + 9, "#222b37", "#121820", "#18202a");
     if (c.y < FLOOR_Y - 2.6) {
       for (let q = 0; q < 3; q++) {
         const p = P(c, u + 1.8, FLOOR_Y - 2.6, cy0 + 1.5 + q * 3);
-        if (p && p.s * 1.2 > 1.5) {
-          g.strokeStyle = "rgba(120,180,255,0.35)";
-          g.lineWidth = 1;
+        if (!p || p.s * 1.3 < 1.2) continue;
+        const rx = 1.3 * p.s;
+        const ry = rx * Math.max(0.2, c.sp);
+        g.fillStyle = "#06090d";
+        g.beginPath();
+        g.ellipse(p.x, p.y, rx, ry, 0, 0, Math.PI * 2);
+        g.fill();
+        g.strokeStyle = "rgba(150,200,255,0.55)";
+        g.lineWidth = Math.max(1, rx * 0.08);
+        g.stroke();
+        if (rx > 3) {
+          const rot = f * 0.5 + i * 1.3 + q * 2.1;
+          g.strokeStyle = "rgba(150,190,230,0.4)";
           g.beginPath();
-          g.ellipse(p.x, p.y, 1.3 * p.s, 1.3 * p.s * Math.max(0.2, c.sp), 0, 0, Math.PI * 2);
+          for (let b = 0; b < 3; b++) {
+            const a = rot + (b * Math.PI * 2) / 3;
+            g.moveTo(p.x, p.y);
+            g.lineTo(p.x + Math.cos(a) * rx * 0.85, p.y + Math.sin(a) * ry * 0.85);
+          }
           g.stroke();
         }
+        yardLights.push([p.x, p.y, "#7fc8ff", 0.16 * rx]);
       }
+      const led = P(c, u + 0.4, FLOOR_Y - 2.4, cy0 + 9);
+      if (led) yardLights.push([led.x, led.y, hash(i * 3.7) < 0.8 ? "#ffb35c" : C.green, -1]);
     }
   }
-  // generators
+  // generators: exhaust stacks glowing warm, status lights
   for (let i = 0; i < 10; i++) {
     const v = CAMPUS_V0 + 18 + i * 7;
-    box(g, c, CAMPUS_U1 - 10, CAMPUS_U1 - 3, FLOOR_Y - 3, FLOOR_Y, v, v + 4.5, "#232a33", "#151a21", "#1b2129");
+    box(g, c, CAMPUS_U1 - 10, CAMPUS_U1 - 3, FLOOR_Y - 3, FLOOR_Y, v, v + 4.5, "#2a323d", "#171d25", "#1f262f");
+    const ex = P(c, CAMPUS_U1 - 4.5, FLOOR_Y - 3.6, v + 2.2);
+    if (ex) yardLights.push([ex.x, ex.y, "#ff9a3c", 0.9 * ex.s]);
+    const led = P(c, CAMPUS_U1 - 9.6, FLOOR_Y - 2.6, v + 4.5);
+    if (led) yardLights.push([led.x, led.y, hash(i * 5.1) < 0.7 ? C.green : "#ffcf8a", -1]);
   }
   // substation
   const [su, sv] = SUBSTATION;
@@ -996,8 +1227,34 @@ const campus = (g: G, c: Cam, f: number) => {
     for (let j = 0; j < 2; j++) {
       const u = su - 12 + i * 7;
       const v = sv - 8 + j * 12;
-      box(g, c, u, u + 4, FLOOR_Y - 4, FLOOR_Y, v, v + 5, "#3a3f47", "#22262d", "#2c3139");
+      box(g, c, u, u + 4, FLOOR_Y - 4, FLOOR_Y, v, v + 5, "#252b33", "#14181e", "#1b2027");
+      if (c.y < FLOOR_Y - 4) {
+        const a1 = P(c, u + 0.5, FLOOR_Y - 4, v + 0.6);
+        const b1 = P(c, u + 0.5, FLOOR_Y - 4, v + 4.4);
+        const a2 = P(c, u + 3.5, FLOOR_Y - 4, v + 0.6);
+        const b2 = P(c, u + 3.5, FLOOR_Y - 4, v + 4.4);
+        if (a1 && b1 && a2 && b2 && Math.hypot(b1.x - a1.x, b1.y - a1.y) > 6) {
+          g.strokeStyle = "rgba(150,170,200,0.25)";
+          g.lineWidth = 1;
+          g.beginPath();
+          for (let q = 0; q <= 5; q++) {
+            const t = q / 5;
+            g.moveTo(a1.x + (a2.x - a1.x) * t, a1.y + (a2.y - a1.y) * t);
+            g.lineTo(b1.x + (b2.x - b1.x) * t, b1.y + (b2.y - b1.y) * t);
+          }
+          g.stroke();
+        }
+      }
+      const wl = P(c, u + 2, FLOOR_Y - 4.3, v + 2.5);
+      if (wl) yardLights.push([wl.x, wl.y, (Math.floor(f / 12) + i + j) % 3 ? "#ffb35c" : C.red, -1]);
     }
+  g.save();
+  g.globalCompositeOperation = "lighter";
+  for (const [x, y, col, r] of yardLights) {
+    if (r > 0) glow(g, x, y, Math.max(3, r * 3), col, 0.32, 0.06);
+    else glow(g, x, y, 4.5, col, 0.85 * (0.6 + 0.4 * Math.sin(f * 0.2 + x * 0.1)));
+  }
+  g.restore();
   g.globalCompositeOperation = "lighter";
   // substation glow + perimeter lights
   const sp = P(c, su, FLOOR_Y - 3, sv);
@@ -1061,6 +1318,7 @@ export const drawWorld3D = (g: G, c: Cam, f: number) => {
   for (let h = 0; h < HALL_OFF.length; h++) {
     if (h > 0 && D < 6) continue;
     hallFloor(g, c, f, h);
+    if (h === 0) floorTiles(g, c);
   }
   campus(g, c, f);
   // racks, far -> near
@@ -1129,22 +1387,23 @@ const brackets = (g: G, q: P2[], a: number) => {
   g.shadowBlur = 0;
 };
 
-export const TRAY_TAG: [number, number] = [298, 352];
-export const RACK_TAG: [number, number] = [386, 446];
+export const TRAY_TAG: [number, number] = [298, 360];
+export const RACK_TAG: [number, number] = [386, 450];
 /** Screen quads (clockwise from top-left) of the focus tray and the focus rack front, with their highlight alphas. */
 export const focusBoxes = (c: Cam, f: number) => {
   const [tu, tv] = trayCentre(f);
-  const ta = Math.min(clamp((f - TRAY_TAG[0]) / 10), clamp((TRAY_TAG[1] - f) / 10));
-  const ra = Math.min(clamp((f - RACK_TAG[0]) / 10), clamp((RACK_TAG[1] - f) / 10));
+  const ta = Math.min(clamp((f - TRAY_TAG[0]) / 6), clamp((TRAY_TAG[1] - f) / 8));
+  const ra = Math.min(clamp((f - RACK_TAG[0]) / 6), clamp((RACK_TAG[1] - f) / 8));
   let tray: P2[] | null = null;
   let rack: P2[] | null = null;
   if (ta > 0) {
-    const m = 0.015;
+    // the whole server (tray), clockwise from top-left as seen from above
+    const m = 0.02;
     const q = [
-      P(c, tu - TRAY_W / 2 - m, -0.03, tv - TRAY_D / 2 - m),
-      P(c, tu + TRAY_W / 2 + m, -0.03, tv - TRAY_D / 2 - m),
-      P(c, tu + TRAY_W / 2 + m, -0.03, tv - 0.04),
-      P(c, tu - TRAY_W / 2 - m, -0.03, tv - 0.04),
+      P(c, tu - TRAY_W / 2 - m, -0.09, tv - TRAY_D / 2 - m),
+      P(c, tu + TRAY_W / 2 + m, -0.09, tv - TRAY_D / 2 - m),
+      P(c, tu + TRAY_W / 2 + m, -0.09, tv + TRAY_D / 2 + m),
+      P(c, tu - TRAY_W / 2 - m, -0.09, tv + TRAY_D / 2 + m),
     ];
     if (q.every(Boolean)) tray = q as P2[];
   }

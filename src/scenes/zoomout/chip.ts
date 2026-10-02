@@ -773,6 +773,69 @@ const drawMetals = (g0: CanvasRenderingContext2D, T: [number, number], D: number
   g0.restore();
 };
 
+/**
+ * Structure at the standard-cell scale: alternate cell rows shaded, bright power rails between them,
+ * block boundaries every 32 rows, and a few busy cells pulsing - so this level reads as layout, not static.
+ */
+const cellHierarchy = (g: CanvasRenderingContext2D, M: Map2, f: number, alpha: number) => {
+  if (alpha <= 0.01) return;
+  const k = M.k;
+  const rowPx = CH * k;
+  if (rowPx < 4) return;
+  const j0 = Math.floor(M.v0 / CH) - 1;
+  const j1 = Math.ceil(M.v1 / CH) + 1;
+  const xa = (M.u0 - M.ox) * k;
+  const xw = (M.u1 - M.u0) * k;
+  g.save();
+  g.globalAlpha = alpha;
+  // alternate rows a touch darker
+  g.fillStyle = "rgba(0,0,0,0.22)";
+  for (let j = j0; j <= j1; j++) if (((j % 2) + 2) % 2) g.fillRect(xa, (j * CH - M.oy) * k, xw, rowPx);
+  g.globalCompositeOperation = "lighter";
+  // power rails: VDD / VSS alternate, with a slow current pulse travelling along them
+  for (let j = j0; j <= j1; j++) {
+    const y = (j * CH - M.oy) * k;
+    const vdd = ((j % 2) + 2) % 2 === 0;
+    g.fillStyle = vdd ? "rgba(255,190,110,0.2)" : "rgba(120,190,255,0.14)";
+    g.fillRect(xa, y - Math.max(1, rowPx * 0.03), xw, Math.max(2, rowPx * 0.06));
+    const ph = ((f * 0.006 + hash(j * 1.7)) % 1) * xw;
+    glow(g, xa + ph, y, Math.max(6, rowPx * 0.35), vdd ? "#ffcf8a" : C.cyan, 0.35);
+  }
+  // block boundaries: a brighter grid every NR rows / NG gates
+  const blk = NR * CH;
+  const bw = NG * GP;
+  g.strokeStyle = "rgba(56,214,255,0.32)";
+  g.lineWidth = Math.max(1.5, rowPx * 0.08);
+  g.beginPath();
+  for (let b = Math.floor(M.v0 / blk); b <= Math.ceil(M.v1 / blk); b++) {
+    const y = (b * blk - M.oy) * k;
+    g.moveTo(xa, y);
+    g.lineTo(xa + xw, y);
+  }
+  for (let b = Math.floor(M.u0 / bw); b <= Math.ceil(M.u1 / bw); b++) {
+    const x = (b * bw - M.ox) * k;
+    g.moveTo(x, (M.v0 - M.oy) * k);
+    g.lineTo(x, (M.v1 - M.oy) * k);
+  }
+  g.stroke();
+  // a few busy cells (4 gates wide) pulsing
+  const cw = 4 * GP;
+  const i0 = Math.floor(M.u0 / cw);
+  const i1 = Math.ceil(M.u1 / cw);
+  for (let j = j0; j <= j1; j++)
+    for (let i = i0; i <= i1; i++) {
+      const h = hash2(i * 0.37 + 11.3, j * 0.71 - 4.1);
+      if (h > 0.035) continue;
+      const pulse = Math.pow(0.5 + 0.5 * Math.sin(f * 0.16 + h * 400), 3);
+      const x = ((i + 0.5) * cw - M.ox) * k;
+      const y = ((j + 0.5) * CH - M.oy) * k;
+      g.fillStyle = `rgba(120,230,255,${0.1 + 0.25 * pulse})`;
+      g.fillRect(x - cw * k * 0.5, y - rowPx * 0.45, cw * k, rowPx * 0.9);
+      glow(g, x, y, rowPx * (0.8 + 0.6 * pulse), C.cyan, 0.25 + 0.4 * pulse);
+    }
+  g.restore();
+};
+
 /** Multi-scale switching activity: grid cells light up and flicker. */
 const drawActivity = (g: CanvasRenderingContext2D, M: Map2, f: number, alpha: number) => {
   g.save();
@@ -953,6 +1016,7 @@ export const drawChipWorld = (
   if (trA > 0) drawTransistors(g, M, f, alpha * trA);
   // 5. activity
   drawActivity(g, M, f, alpha * clamp((4e-4 - view) / 2e-4));
+  cellHierarchy(g, M, f, alpha * fade(view, 3.5e-6, 6e-6) * (1 - fade(view, 4e-5, 9e-5)));
   const smActA = fade(view, 4e-4, 1e-3) * (1 - fade(view, 0.012, 0.03));
   if (smActA > 0) drawSMActivity(g, M, f, alpha * smActA, DIE_C[0], DIE_C[1]);
   const dieActA = fade(view, 0.008, 0.02);

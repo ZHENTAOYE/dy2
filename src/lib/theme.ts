@@ -1,5 +1,5 @@
 export const FONT_CN = `"Noto Sans SC", "WenQuanYi Zen Hei", "PingFang SC", "Microsoft YaHei", sans-serif`;
-export const FONT_MONO = `"JetBrains Mono", "DejaVu Sans Mono", monospace`;
+export const FONT_MONO = `"JetBrains Mono", "DejaVu Sans Mono", Consolas, Menlo, monospace`;
 
 export const C = {
   bg: "#02040a",

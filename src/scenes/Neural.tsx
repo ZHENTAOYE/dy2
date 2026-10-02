@@ -977,7 +977,7 @@ const drawFrost = (main: CanvasRenderingContext2D, f: number) => {
 /** 1 inside the caption text box (x 290..1630), soft edged. */
 const boxK = (x: number) => smooth(250, 330, x) * (1 - smooth(1590, 1670, x));
 /** How strongly effects are kept out of the caption band: fully in the text box, `corner` beside it. */
-const bandK = (x: number, y: number, corner = 0.7) => smooth(765, 835, y) * (corner + (1 - corner) * boxK(x));
+const bandK = (x: number, y: number, corner = 0.7) => smooth(690, 845, y) * (corner + (1 - corner) * boxK(x));
 const BANDS = new Map<number, HTMLCanvasElement>();
 const bandMask = (corner: number) => {
   const hit = BANDS.get(corner);
@@ -2486,17 +2486,19 @@ const Counter: React.FC = () => {
   const pop = frame >= COUNT_B ? Math.exp(-(frame - COUNT_B) / 6) : 0;
   const settled = ease.outCubic(prog(frame, COUNT_B, COUNT_B + 14));
   return (
-    <div style={{ position: "absolute", left: 200, top: 128, opacity: a, transform: `translateX(${(1 - a) * -30}px)` }}>
+    // top 88: the label's baseline sits ~20 px above the horizon line (y 330), never on it
+    <div style={{ position: "absolute", left: 200, top: 88, opacity: a, transform: `translateX(${(1 - a) * -30}px)` }}>
       {/* soft dark backing so it stays crisp white over the sky */}
-      <div style={{ position: "absolute", left: -150, top: -90, width: 760, height: 430, background: "radial-gradient(ellipse at 42% 50%, rgba(3,1,10,0.62) 0%, rgba(3,1,10,0.4) 45%, rgba(3,1,10,0) 72%)" }} />
+      {/* (closest-side gradients reach zero inside their boxes, so no box edge ever shows) */}
+      <div style={{ position: "absolute", left: -190, top: -110, width: 860, height: 480, background: "radial-gradient(closest-side, rgba(3,1,10,0.62) 0%, rgba(3,1,10,0.42) 55%, rgba(3,1,10,0) 100%)" }} />
       <div
         style={{
           position: "absolute",
-          left: -80,
-          top: -10,
-          width: 560,
-          height: 230,
-          background: `radial-gradient(ellipse at 40% 55%, ${withAlpha(HOT, 0.55)} 0%, ${withAlpha(C.violet, 0.25)} 38%, rgba(0,0,0,0) 70%)`,
+          left: -120,
+          top: -40,
+          width: 640,
+          height: 300,
+          background: `radial-gradient(closest-side, ${withAlpha(HOT, 0.55)} 0%, ${withAlpha(C.violet, 0.25)} 55%, rgba(0,0,0,0) 100%)`,
           opacity: 0.18 + 0.2 * settled + 0.8 * pop,
           mixBlendMode: "screen",
         }}

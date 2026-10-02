@@ -17,7 +17,7 @@ const WAVES = ticks("converge", "wave");
 
 const CAPS = [
   { from: STREAMS + 10, to: IMPACT - 5, text: "算力、数据、算法——{{三条曲线}}终于在同一时刻交汇。" },
-  { from: IMPACT + 36, to: DUR - 20, text: "一场真正的爆发开始了。" },
+  { from: IMPACT + 20, to: DUR - 20, text: "一场真正的爆发开始了。" },
 ];
 // how strongly the caption band (y >= ~760) must be kept clear; held a little past each caption's exit
 const CAP_HOLD = [4, 14];
@@ -59,13 +59,15 @@ const PRE_END = preRig(IMPACT);
 const rigAt = (f: number): Rig => {
   const t = f - IMPACT;
   if (t < 0) return preRig(f);
-  const kick = ease.outExpo(clamp(t / 50));
-  const dolly = ease.inOutCubic(prog(f, IMPACT + 84, DUR + 8));
+  // the camera holds for a few frames so the blast overtakes the lens; only then is it thrown back, and
+  // soon after it starts to dive back into the growing network
+  const kick = ease.outCubic(clamp((t - 5) / 64));
+  const dolly = ease.inOutCubic(prog(f, IMPACT + 38, DUR + 8));
   return {
-    dist: lerp(PRE_END.dist, 86, kick) - 47 * dolly,
+    dist: lerp(PRE_END.dist, 66, kick) - 26 * dolly,
     el: lerp(PRE_END.el, 0.24, ease.inOutSine(prog(f, IMPACT + 2, IMPACT + 110))),
     az: PRE_END.az + 1.5 * ease.inOutSine(prog(f, IMPACT + 4, DUR + 40)),
-    cy: lerp(PRE_END.cy, 470, ease.outCubic(prog(f, IMPACT, IMPACT + 40))),
+    cy: lerp(PRE_END.cy, 440, ease.outCubic(prog(f, IMPACT, IMPACT + 40))),
   };
 };
 const camAt = (f: number): Cam => {
@@ -88,9 +90,9 @@ const expo = (s: number) => (Math.exp(K_EXP * s) - 1) / EK;
 const dexpo = (s: number) => (K_EXP * Math.exp(K_EXP * s)) / EK;
 
 const ARMS = [
-  { name: "算力", en: "COMPUTE", col: C.cyan, psi: -120 * DEG, R: 26, wid: 1.55, kinds: ["chip"], ign: STREAMS - 16, launch: STREAMS - 2 },
-  { name: "数据", en: "DATA", col: C.magenta, psi: 120 * DEG, R: 26, wid: 1.55, kinds: ["photo", "token"], ign: STREAMS - 10, launch: STREAMS + 2 },
-  { name: "算法", en: "ALGORITHMS", col: C.gold, psi: 26 * DEG, R: 13, wid: 0.95, kinds: ["graph"], ign: STREAMS + 6, launch: STREAMS + 8 },
+  { name: "算力", en: "COMPUTE", col: C.cyan, psi: -120 * DEG, R: 26, wid: 2.1, kinds: ["chip"], ign: STREAMS - 32, launch: STREAMS - 2 },
+  { name: "数据", en: "DATA", col: C.magenta, psi: 120 * DEG, R: 26, wid: 2.1, kinds: ["photo", "token"], ign: STREAMS - 26, launch: STREAMS + 2 },
+  { name: "算法", en: "ALGORITHMS", col: C.gold, psi: 26 * DEG, R: 13, wid: 0.95, kinds: ["graph"], ign: STREAMS - 6, launch: STREAMS + 8 },
 ];
 const LITE = ARMS.map((a) => mix(a.col, WHITE, 0.55));
 
@@ -117,7 +119,7 @@ const groundOf = (k: number, s: number): P3 => {
 /** Where the head of each stream is along its curve (0 = source, 1 = O); accelerating. */
 const frontAt = (f: number, k: number) => {
   const u = prog(f, ARMS[k].launch, MEET);
-  return 0.35 * ease.outCubic(u) + 0.65 * u * u * u;
+  return 0.5 * ease.outCubic(u) + 0.5 * u * u * u;
 };
 /** Integrated particle flow (in path cycles): accelerating, then a last violent rush during the inhale. */
 const flowAt = (f: number) => {
@@ -423,13 +425,29 @@ const BUCKET_STYLE = Array.from({ length: N_BUCKET }, (_, key) => {
   const lvl = pal % 4;
   // at rest the fan-in wiring stays thin (it lights up when a wave runs along it); the meshes of the even
   // layers carry the shell structure
-  const base = cls === 0 ? (near ? 0.15 : 0.055) : (near ? 0.15 : 0.055) * (cls === 2 ? 0.4 : 1);
+  const base = cls === 0 ? (near ? 0.15 : 0.055) : (near ? 0.15 : 0.055) * (cls === 2 ? 0.4 : odd ? 1 : 1.5);
   return {
     col: PAL[Math.floor(pal / 4)][lvl],
     alpha: base * [0.5, 0.72, 0.9, 1][lvl] * (odd ? 0.55 : 1),
     width: near ? (cls === 0 ? 1.5 : 1.2) : 1,
   };
 });
+
+/**
+ * Push an edge, grown to `g` from A. Long edges (right in front of the lens) would read as sticks rather than
+ * wiring: past `l0` px they shrink smoothly to two short stubs at their nodes and are gone at `l1` px.
+ */
+const pushStub = (sg: Seg, A: Pt, B: Pt, g: number, l0: number, l1: number) => {
+  const keep = clamp((l1 - Math.hypot(B.x - A.x, B.y - A.y)) / (l1 - l0));
+  if (keep <= 0) return;
+  if (keep >= 1) {
+    sg.push(A.x, A.y, lerp(A.x, B.x, g), lerp(A.y, B.y, g));
+    return;
+  }
+  const u = Math.min(g, 0.5 * keep);
+  sg.push(A.x, A.y, lerp(A.x, B.x, u), lerp(A.y, B.y, u));
+  if (g >= 1) sg.push(B.x, B.y, lerp(B.x, A.x, 0.5 * keep), lerp(B.y, A.y, 0.5 * keep));
+};
 
 const shellScale = (k: number, t: number) => {
   const tt = t - SHELL_DELAY[k];
@@ -512,16 +530,18 @@ const DEBRIS = (() => {
   });
 })();
 
+// two equatorial rings (the first one rips past the frame edges within ~10 frames) and five tilted ones,
+// all well away from edge-on so each reads as a ring, not as a skewed loop across the core
 const RINGS = [
-  { rx: 0, rz: 0, v: 44, tau: 20, delay: 0, col: WHITE },
-  { rx: 0, rz: 0, v: 30, tau: 26, delay: 4, col: C.gold },
-  { rx: 0, rz: 0, v: 19, tau: 30, delay: 9, col: C.cyan },
-  { rx: 1.2, rz: 0.15, v: 34, tau: 22, delay: 1, col: C.magenta },
-  { rx: -0.65, rz: 0.95, v: 27, tau: 26, delay: 3, col: C.cyan },
-  { rx: 0.4, rz: -1.15, v: 23, tau: 28, delay: 7, col: C.gold },
-  { rx: 1.55, rz: 0.5, v: 38, tau: 20, delay: 5, col: WHITE },
-  { rx: -1.3, rz: -0.4, v: 16, tau: 30, delay: 12, col: C.magenta },
+  { rx: 0, rz: 0, v: 64, tau: 18, delay: 0, col: WHITE, eq: true },
+  { rx: 0, rz: 0, v: 30, tau: 26, delay: 5, col: C.gold, eq: true },
+  { rx: 0.82, rz: 0.25, v: 36, tau: 22, delay: 1, col: C.magenta, eq: false },
+  { rx: -0.9, rz: 1.05, v: 27, tau: 26, delay: 3, col: C.cyan, eq: false },
+  { rx: 0.95, rz: -1.1, v: 21, tau: 28, delay: 7, col: C.gold, eq: false },
+  { rx: -0.72, rz: -0.35, v: 46, tau: 20, delay: 4, col: WHITE, eq: false },
+  { rx: 1.0, rz: 2.2, v: 16, tau: 30, delay: 11, col: C.magenta, eq: false },
 ];
+const ringNormal = (rx: number, rz: number): P3 => [Math.sin(rz) * Math.cos(rx), -Math.cos(rz) * Math.cos(rx), -Math.sin(rx)];
 const ringPoint = (rx: number, rz: number, a: number, r: number): P3 => {
   const x = Math.cos(a) * r;
   const z0 = Math.sin(a) * r;
@@ -529,6 +549,20 @@ const ringPoint = (rx: number, rz: number, a: number, r: number): P3 => {
   const z1 = z0 * Math.cos(rx);
   return [x * Math.cos(rz) - y1 * Math.sin(rz), -H + x * Math.sin(rz) + y1 * Math.cos(rz), z1];
 };
+
+// debris that flies straight past the lens in the first frames (camera space: O sits at (0, 0, dist))
+const N_FLY = 240;
+const FLY = (() => {
+  const r = rng(7373);
+  return Array.from({ length: N_FLY }, (_, i) => ({
+    phi: 0.14 + 0.5 * Math.sqrt(r()), // angle off the view axis
+    th: r() * TAU,
+    v: 1.7 + 1.9 * r(),
+    tb: Math.pow(r(), 1.5) * 13,
+    col: i % 5 === 4 ? 3 : i % 3,
+    w: r(),
+  }));
+})();
 
 // stars on the upper half of a far sphere around O
 const STARS = (() => {
@@ -577,6 +611,22 @@ const strokeSegs = (ctx: CanvasRenderingContext2D, segs: Seg, color: string, wid
     ctx.lineTo(segs[i + 2], segs[i + 3]);
   }
   ctx.stroke();
+};
+/** Project a closed 3D loop into runs of screen points, breaking wherever it passes behind the lens. */
+const loopRuns = (cam: Cam, n: number, at: (u: number) => P3, near = 1.2): Pt[][] => {
+  const runs: Pt[][] = [];
+  let cur: Pt[] = [];
+  for (let i = 0; i <= n; i++) {
+    const q = P(cam, at(i / n), near);
+    if (!q || Math.abs(q.x - 960) > 5000 || Math.abs(q.y - 540) > 5000) {
+      if (cur.length > 1) runs.push(cur);
+      cur = [];
+      continue;
+    }
+    cur.push(q);
+  }
+  if (cur.length > 1) runs.push(cur);
+  return runs;
 };
 const polyline = (ctx: CanvasRenderingContext2D, pts: Pt[]) => {
   ctx.beginPath();
@@ -657,9 +707,18 @@ const drawBackground = (ctx: CanvasRenderingContext2D, w: number, h: number, f: 
   b.fillRect(0, 0, w, h);
   b.globalCompositeOperation = "lighter";
   // nebulae far out along each stream's direction
+  // (a coreless gradient: a glow sprite's white centre would read as a stain on the lens)
   ARMS.forEach((a, k) => {
     const s = P(cam, [[-170, 170, 10][k], [-70, -80, -120][k], 230]);
-    if (s) glow(b, s.x, s.y, 900, a.col, 0.06 + 0.05 * c + 0.12 * after + (t >= 0 ? 0.03 : 0), 0.02);
+    if (!s) return;
+    const A = 0.06 + 0.05 * c + 0.04 * after + (t >= 0 ? 0.03 : 0);
+    const ng = b.createRadialGradient(s.x, s.y, 0, s.x, s.y, 900);
+    ng.addColorStop(0, withAlpha(a.col, 0.8 * A));
+    ng.addColorStop(0.24, withAlpha(a.col, 0.35 * A));
+    ng.addColorStop(0.52, withAlpha(a.col, 0.08 * A));
+    ng.addColorStop(1, withAlpha(a.col, 0));
+    b.fillStyle = ng;
+    b.fillRect(s.x - 900, s.y - 900, 1800, 1800);
   });
   b.globalCompositeOperation = "source-over";
   // the ground below the horizon and the horizon glow: both gone soon after the blast
@@ -675,7 +734,7 @@ const drawBackground = (ctx: CanvasRenderingContext2D, w: number, h: number, f: 
   if (ga > 0 && hy > -150 && hy < h + 150) {
     b.globalCompositeOperation = "lighter";
     const hg = b.createLinearGradient(0, hy - 90, 0, hy + 60);
-    const ha = (0.16 + 0.22 * c + 0.2 * after) * ga;
+    const ha = (0.16 + 0.06 * prog(f, 8, 60) + 0.22 * c + 0.2 * after) * ga;
     hg.addColorStop(0, "rgba(60,90,200,0)");
     hg.addColorStop(0.6, withAlpha(mix("#3a5cff", C.gold, 0.25 + 0.4 * c), ha));
     hg.addColorStop(0.62, withAlpha(mix("#9fb5ff", WHITE, c), 0.5 * ha));
@@ -724,7 +783,7 @@ const drawFloor = (ctx: CanvasRenderingContext2D, f: number, cam: Cam, alpha: nu
     const r = ri * 2;
     if (r > RMAX * grow + 2) break;
     const near = t >= 0 ? Math.exp(-Math.pow((r - rs) / 3, 2)) * Math.exp(-t / 70) : 0;
-    const base = (ri % 4 === 0 ? 0.2 : 0.1) * clamp(1.25 - r / RMAX) * clamp((RMAX * grow + 2 - r) / 6);
+    const base = (ri % 4 === 0 ? 0.28 : 0.15) * clamp(1.25 - r / RMAX) * clamp((RMAX * grow + 2 - r) / 6);
     ctx.strokeStyle = withAlpha(mix("#4f6dff", WHITE, near), (base + 0.6 * near) * alpha);
     ctx.lineWidth = ri % 4 === 0 ? 1.6 : 1.1;
     ctx.beginPath();
@@ -742,7 +801,7 @@ const drawFloor = (ctx: CanvasRenderingContext2D, f: number, cam: Cam, alpha: nu
     }
     ctx.stroke();
   }
-  ctx.strokeStyle = withAlpha("#4f6dff", 0.075 * alpha);
+  ctx.strokeStyle = withAlpha("#4f6dff", 0.1 * alpha);
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (let i = 0; i < 48; i++) {
@@ -765,10 +824,10 @@ const drawFloor = (ctx: CanvasRenderingContext2D, f: number, cam: Cam, alpha: nu
 
 /** Data motes drifting in toward the apex from everywhere (pre-impact). */
 const drawMotes = (ctx: CanvasRenderingContext2D, f: number, cam: Cam) => {
-  const vis = prog(f, STREAMS - 24, STREAMS + 30) * (1 - inhaleAt(f));
+  const vis = (0.45 * prog(f, 10, 40) + 0.55 * prog(f, STREAMS - 10, STREAMS + 30)) * (1 - inhaleAt(f));
   if (vis <= 0.01 || f >= IMPACT) return;
   const c = chargeAt(f);
-  const fl = flowAt(f) + 0.05 * f / 30;
+  const fl = flowAt(f) + (0.2 * f) / 30;
   const segs: Seg[] = [[], [], []];
   const gb = new GlowBatch();
   for (const m of MOTES) {
@@ -805,8 +864,10 @@ const drawStreams = (ctx: CanvasRenderingContext2D, f: number, cam: Cam) => {
     if (!S) return;
     const k2 = S.s / 45;
     const flick = 0.85 + 0.15 * noise1(f * 0.3 + k * 9);
-    glow(ctx, S.x, S.y, Math.min(150, 130 * k2) * ign, a.col, 0.3 * ign * flick, 0.05);
-    glow(ctx, S.x, S.y, Math.min(40, 32 * k2), WHITE, 0.9 * ign);
+    // the gold source sits close to the lens: keep it from blooming once its stream is running
+    const near = k === 2 ? 1 - 0.45 * prog(f, a.launch, a.launch + 30) : 1;
+    glow(ctx, S.x, S.y, Math.min(150, 130 * k2) * ign, a.col, 0.3 * ign * flick * near, 0.05);
+    glow(ctx, S.x, S.y, Math.min(40, 32 * k2), WHITE, 0.9 * ign * near);
     // ignition beacon: a pillar of light that shoots up and dissipates before the labels arrive
     const top = P(cam, [sp[0], -7, sp[2]]);
     const pil = ign * (1 - prog(f, a.ign + 18, a.ign + 36));
@@ -896,7 +957,8 @@ const drawStreams = (ctx: CanvasRenderingContext2D, f: number, cam: Cam) => {
       const s = s0c + ((F - s0c) * (j + 0.5)) / 12;
       const q = P(cam, armPos(k, s));
       if (!q) continue;
-      glow(ctx, q.x, q.y, Math.min(120, 1.5 * (a.wid * Math.pow(1 - s, 0.7) + 0.1) * q.s + 20), col, (0.09 + 0.07 * s + 0.08 * c) * dim, 0.02);
+      const gb0 = k === 2 ? lerp(0.5, 1, clamp(s / 0.25)) : 1;
+      glow(ctx, q.x, q.y, Math.min(120, 1.5 * (a.wid * Math.pow(1 - s, 0.7) + 0.1) * q.s + 20), col, (0.09 + 0.07 * s + 0.08 * c) * dim * gb0, 0.02);
     }
     // the curve itself, brighter toward O (exponential glow); it thickens as the charge builds
     const pts: Pt[] = [];
@@ -907,9 +969,10 @@ const drawStreams = (ctx: CanvasRenderingContext2D, f: number, cam: Cam) => {
     const hq = P(cam, armPos(k, F));
     if (hq) pts.push(hq);
     const n = pts.length;
+    const lowK = k === 2 ? [0.4, 0.7, 1, 1] : [1, 1, 1, 1];
     for (let j = 0; j < 4; j++) {
       const sub = pts.slice(Math.floor((n * j) / 4), Math.min(n, Math.floor((n * (j + 1)) / 4) + 1));
-      glowLine(ctx, sub, col, 1.7 + 0.8 * j + 3 * c, (0.34 + 0.22 * j + 0.35 * c) * dim);
+      glowLine(ctx, sub, col, 1.7 + 0.8 * j + 3 * c, (0.34 + 0.22 * j + 0.35 * c) * dim * lowK[j]);
     }
     // the meeting: a bright pulse runs back down each curve
     if (mt >= 0 && mt < 26) {
@@ -927,11 +990,13 @@ const drawStreams = (ctx: CanvasRenderingContext2D, f: number, cam: Cam) => {
         glow(ctx, hd.x, hd.y, 30, WHITE, (1 - mt / 26) * dim);
       }
     }
-    // particles: long motion trails, bright heads
-    const buckets: Seg[] = [[], [], [], [], [], []];
+    // particles: long motion trails, bright heads. A young stream carries fewer of them, so its first
+    // few metres do not pile up into a blob.
+    const buckets: Seg[] = Array.from({ length: 8 }, () => []);
     const gb = new GlowBatch();
     const L = PARTS[k];
-    for (let i = 0; i < nAct; i++) {
+    const nK = Math.floor(nAct * clamp(0.15 + F / 0.4));
+    for (let i = 0; i < nK; i++) {
       const p = L[i];
       const u = frac(p.a + flow * p.sp);
       const s = F * Math.pow(u, 1.3);
@@ -940,26 +1005,30 @@ const drawStreams = (ctx: CanvasRenderingContext2D, f: number, cam: Cam) => {
       const A = P(cam, armPos(k, s, p.o1, p.o2));
       const B = P(cam, armPos(k, s0, p.o1, p.o2));
       if (!A || !B) continue;
-      const band = s < 0.4 ? 0 : s < 0.75 ? 1 : 2;
+      const band = s < 0.2 ? 0 : s < 0.4 ? 1 : s < 0.75 ? 2 : 3;
       buckets[band * 2 + p.b].push(B.x, B.y, A.x, A.y);
       if (i % 3 === 0) {
         const edge = clamp(s / 0.03) * clamp((F - s) / 0.02 + 0.3);
-        gb.add(p.b ? WHITE : col, A.x, A.y, Math.min(14, (1.6 + 4.2 * p.sz) * (A.s / 42) * (0.8 + 0.5 * s)), (0.3 + 0.5 * s) * edge * dim);
+        const gb0 = k === 2 ? lerp(0.5, 1, clamp(s / 0.25)) : 1;
+        gb.add(p.b && (k !== 2 || s > 0.4) ? WHITE : col, A.x, A.y, Math.min(14, (1.6 + 4.2 * p.sz) * (A.s / 42) * (0.8 + 0.5 * s)), (0.3 + 0.5 * s) * edge * dim * gb0);
       }
     }
     gb.flush(ctx);
-    for (let band = 0; band < 3; band++) {
-      const wA = [1.1, 1.5, 2.1][band] * (1 + 0.5 * c);
-      const aA = [0.2, 0.3, 0.42][band] * (1 + 0.5 * c);
+    // (the gold source is close to the lens: its base is kept dim so it does not bloom to white)
+    const baseK = k === 2 ? [0.3, 0.6, 1, 1] : [1, 1, 1, 1];
+    for (let band = 0; band < 4; band++) {
+      const wA = [1.1, 1.1, 1.5, 2.1][band] * (1 + 0.5 * c);
+      const aA = [0.24, 0.24, 0.36, 0.5][band] * (1 + 0.5 * c) * baseK[band];
       strokeSegs(ctx, buckets[band * 2], col, wA * 2.6, aA * 0.25 * dim);
       strokeSegs(ctx, buckets[band * 2], col, wA, aA * dim);
-      strokeSegs(ctx, buckets[band * 2 + 1], LITE[k], wA * 1.2, Math.min(1, aA * 1.8) * dim);
+      strokeSegs(ctx, buckets[band * 2 + 1], k === 2 && band < 2 ? col : LITE[k], wA * 1.2, Math.min(1, aA * 1.8) * dim);
     }
     // glyph sprites riding the stream
     for (const sp of SPRS[k]) {
+      // spread over the whole curve and revealed as the head passes (a young stream carries only a few)
       const u = frac(sp.a + flow * 0.42 * sp.sp);
-      const s = F * u;
-      const fade = clamp((s - 0.02) / 0.05) * clamp((0.74 - s) / 0.14) * clamp((s - cut) / 0.05) * dim;
+      const s = 0.8 * u;
+      const fade = clamp((s - 0.02) / 0.05) * clamp((0.74 - s) / 0.14) * clamp((s - cut) / 0.05) * clamp((F - s) / 0.04) * dim;
       if (fade <= 0.01) continue;
       const q = P(cam, armPos(k, s, sp.o1, sp.o2));
       if (!q) continue;
@@ -968,7 +1037,7 @@ const drawStreams = (ctx: CanvasRenderingContext2D, f: number, cam: Cam) => {
       ctx.globalAlpha = 0.95 * fade;
       ctx.translate(q.x, q.y);
       ctx.rotate(sp.rot + 0.02 * f * (sp.v - 1));
-      glow(ctx, 0, 0, size * 0.95, col, 0.35);
+      glow(ctx, 0, 0, size * 0.95, col, 0.28, 0.05);
       ctx.drawImage(sprite(sp.kind, col, sp.v), -size / 2, -size / 2, size, size);
       ctx.restore();
     }
@@ -983,7 +1052,7 @@ const drawStreams = (ctx: CanvasRenderingContext2D, f: number, cam: Cam) => {
         const pp = P(cam, armPos(k, Math.max(cut, s - 0.08 * (1 - q / 8))));
         if (pp) seg.push(pp);
       }
-      const fade = clamp(s / 0.06) * clamp((1 - s) / 0.04);
+      const fade = clamp(s / 0.06) * clamp((1 - s) / 0.04) * (k === 2 ? lerp(0.35, 1, clamp(s / 0.4)) : 1);
       glowLine(ctx, seg, col, 3, 0.8 * fade * dim);
       const hd = seg[seg.length - 1];
       if (hd) glow(ctx, hd.x, hd.y, 22, WHITE, 0.75 * fade * dim);
@@ -1151,19 +1220,21 @@ const drawCore = (ctx: CanvasRenderingContext2D, w: number, f: number, cam: Cam,
 const drawRays = (ctx: CanvasRenderingContext2D, f: number, O: Pt) => {
   const t = f - IMPACT;
   if (t < 0) return;
-  const rayA = 0.17 * Math.exp(-t / 22) * (1 - prog(t, 40, 64));
+  const rayA = 0.32 * Math.exp(-Math.max(0, t - 5) / 15) * (1 - prog(t, 36, 60));
   if (rayA <= 0.004) return;
   ctx.save();
   ctx.translate(O.x, O.y);
   ctx.rotate(t * 0.0025);
-  const shoot = ease.outCubic(clamp((t + 1) / 10));
-  for (let i = 0; i < 48; i++) {
-    const a = (i / 48) * TAU + hash(i) * 0.09;
-    const len = 1700 * shoot * (0.65 + 0.35 * hash(i * 2.7));
-    const wid = 0.005 + hash(i * 9) * 0.02;
+  const shoot = ease.outCubic(clamp((t + 1) / 8));
+  for (let i = 0; i < 56; i++) {
+    const a = (i / 56) * TAU + hash(i) * 0.09;
+    const len = 2500 * shoot * (0.7 + 0.3 * hash(i * 2.7));
+    const wid = 0.006 + hash(i * 9) * 0.028;
     const col = HUE_COLS[i % 3];
+    const ra = rayA * (0.6 + 0.8 * hash(i * 4.4));
     const g = ctx.createLinearGradient(0, 0, Math.cos(a) * len, Math.sin(a) * len);
-    g.addColorStop(0, withAlpha(mix(col, WHITE, 0.4), rayA * (0.6 + 0.8 * hash(i * 4.4))));
+    g.addColorStop(0, withAlpha(mix(col, WHITE, 0.4), ra));
+    g.addColorStop(0.5, withAlpha(col, 0.3 * ra));
     g.addColorStop(1, withAlpha(col, 0));
     ctx.fillStyle = g;
     ctx.beginPath();
@@ -1200,46 +1271,84 @@ const drawBlast = (ctx: CanvasRenderingContext2D, w: number, f: number, cam: Cam
       ctx.stroke();
     });
   }
-  // shockwave rings (3D, chromatic); short tails so they are gone before the network settles
+  // shockwave rings (3D, chromatic); short tails so they are gone before the network settles. A tilted
+  // ring fades as soon as it turns close to edge-on.
+  const vd = [O3[0] - cam.x, O3[1] - cam.y, O3[2] - cam.z];
+  const vl = Math.hypot(vd[0], vd[1], vd[2]);
   for (const R of RINGS) {
     const tt = t - R.delay;
     if (tt < 0) continue;
     const rad = R.v * (1 - Math.exp(-tt / R.tau));
-    const a = Math.exp(-tt / (R.tau * 0.6));
+    let a = Math.exp(-tt / (R.tau * 0.6));
+    if (!R.eq) {
+      const n = ringNormal(R.rx, R.rz);
+      a *= clamp((Math.abs(n[0] * vd[0] + n[1] * vd[1] + n[2] * vd[2]) / vl - 0.15) / 0.15);
+    }
     if (a < 0.02) continue;
     ([
       [C.cyan, 0.975],
       [R.col, 1],
       [C.magenta, 1.025],
     ] as const).forEach(([col, k], j) => {
-      const pts: Pt[] = [];
-      for (let i = 0; i <= 96; i++) {
-        const q = P(cam, ringPoint(R.rx, R.rz, (i / 96) * TAU, rad * k));
-        if (q) pts.push(q);
+      for (const pts of loopRuns(cam, 120, (u) => ringPoint(R.rx, R.rz, u * TAU, rad * k))) {
+        if (j === 1) glowLine(ctx, pts, col, 2 + 6 * a, a);
+        else {
+          ctx.strokeStyle = withAlpha(col, 0.5 * a);
+          ctx.lineWidth = 2 + 3 * a;
+          polyline(ctx, pts);
+          ctx.stroke();
+        }
       }
-      if (j === 1) glowLine(ctx, pts, col, 2 + 6 * a, a);
-      else {
-        ctx.strokeStyle = withAlpha(col, 0.5 * a);
-        ctx.lineWidth = 2 + 3 * a;
-        polyline(ctx, pts);
-        ctx.stroke();
-      }
+    });
+  }
+  // debris flying straight past the lens: streaks that tear off all four edges within a few frames
+  if (t < 30) {
+    const D = PRE_END.dist;
+    const fb: Seg[] = Array.from({ length: 12 }, () => []);
+    const fgb = new GlowBatch();
+    for (const s of FLY) {
+      const tt = t - s.tb;
+      if (tt <= 0) continue;
+      const sp = Math.sin(s.phi);
+      const cp = Math.cos(s.phi);
+      const scr = (u: number) => {
+        const d = s.v * Math.max(0, u);
+        const z = D - cp * d;
+        return z < 0.6 ? null : { x: cam.cx + (cam.f * sp * Math.cos(s.th) * d) / z, y: cam.cy + (cam.f * sp * Math.sin(s.th) * d) / z, z };
+      };
+      const A = scr(tt);
+      const B = scr(tt - 1.4);
+      if (!A || !B) continue;
+      if (Math.abs(B.x - 960) > 1100 || Math.abs(B.y - 540) > 700) continue;
+      const near = clamp((D - A.z) / D);
+      const tier = near > 0.55 ? 2 : near > 0.25 ? 1 : 0;
+      fb[s.col * 3 + tier].push(B.x, B.y, A.x, A.y);
+      if (Math.abs(A.x - 960) < 1000 && Math.abs(A.y - 540) < 600) fgb.add(SPARK_COLS[s.col], A.x, A.y, 6 + 20 * near * (0.5 + s.w), 0.5 * clamp(tt / 2));
+    }
+    fgb.flush(ctx);
+    fb.forEach((sg, j) => {
+      const col = SPARK_COLS[Math.floor(j / 3)];
+      const tier = j % 3;
+      strokeSegs(ctx, sg, col, [5, 9, 16][tier], [0.16, 0.2, 0.22][tier]);
+      strokeSegs(ctx, sg, mix(col, WHITE, 0.55), [1.6, 2.8, 4.5][tier], [0.75, 0.85, 0.9][tier]);
     });
   }
   // sparks (3D, motion-blurred); the ones right on top of the core are held back for the first frames
   // so the ring and spark structure reads instead of a flat white disc
   const buckets: Seg[] = Array.from({ length: 12 }, () => []);
-  const hold = t < 14 ? 1 - t / 14 : 0;
+  const hold = t < 24 ? 1 - t / 24 : 0;
   const gb = new GlowBatch();
+  // the sparks thin out quickly after the first second so the network takes over
+  const sparkFade = (1 - 0.7 * ease.inOutSine(prog(t, 14, 38))) * (1 - prog(t, 34, 62));
   for (let i = 0; i < N_SPARK; i++) {
     const s = SPARKS[i];
-    let life = Math.exp(-t / s.life) * (1 - prog(t, 40, 75));
+    let life = Math.exp(-t / s.life) * sparkFade;
     if (life < 0.03) continue;
     const A = P(cam, sparkAt(s, t), 1.2);
     const B = P(cam, sparkAt(s, t - 2.4), 1.2);
     if (!A || !B) continue;
     // early on only the fast sparks show, so the burst reads as a hollow shell of streaks
-    if (hold > 0) life *= lerp(1, clamp((s.v - 0.6) / 0.9) * Math.pow(clamp(Math.hypot(A.x - O.x, A.y - O.y) / 200), 1.2), hold);
+    if (hold > 0) life *= lerp(1, (0.25 + 0.75 * clamp((s.v - 0.6) / 0.9)) * Math.pow(clamp(Math.hypot(A.x - O.x, A.y - O.y) / 280), 1.3), 0.92 * hold);
     if (life < 0.03) continue;
     let dx = A.x - B.x;
     let dy = A.y - B.y;
@@ -1248,13 +1357,15 @@ const drawBlast = (ctx: CanvasRenderingContext2D, w: number, f: number, cam: Cam
       dx *= 280 / L;
       dy *= 280 / L;
     }
-    const lv = life > 0.6 ? 2 : life > 0.25 ? 1 : 0;
+    // streaks right on top of the core stay in the faintest tier early on (no flat white disc)
+    const onCore = t < 12 && Math.hypot(A.x - O.x, A.y - O.y) < 240;
+    const lv = onCore ? 0 : life > 0.6 ? 2 : life > 0.25 ? 1 : 0;
     buckets[s.col * 3 + lv].push(A.x - dx, A.y - dy, A.x, A.y);
     if (i % 3 === 0) gb.add(SPARK_COLS[s.col], A.x, A.y, Math.min(26, (2 + 5 * s.sz) * (A.s / 40) * (0.5 + life)), life * (0.5 + 0.5 * clamp(t / 12)));
   }
   gb.flush(ctx);
   // the first frames are the densest: keep the streaks translucent so they never pile up into flat white
-  const dens = lerp(0.38, 1, ease.inQuad(clamp(t / 16)));
+  const dens = lerp(0.25, 1, ease.inQuad(clamp(t / 16)));
   buckets.forEach((sg, j) => {
     const col = SPARK_COLS[Math.floor(j / 3)];
     const lv = j % 3;
@@ -1295,7 +1406,7 @@ const drawBlast = (ctx: CanvasRenderingContext2D, w: number, f: number, cam: Cam
   const k1 = Math.exp(-t / 4);
   const tail = 1 - prog(t, 20, 60);
   glow(ctx, O.x, O.y, 760 * k1 + 220, mix(C.gold, WHITE, 0.4), 0.6 * k1 + 0.1 * tail, 0.04);
-  glow(ctx, O.x, O.y, 140 * k1 + 40, mix(C.gold, WHITE, 0.72), 0.6 * (0.3 + 0.7 * k1) * (0.4 + 0.6 * tail), 0.1);
+  glow(ctx, O.x, O.y, 140 * k1 + 40, mix(C.gold, WHITE, 0.5), 0.4 * (0.3 + 0.7 * k1) * (0.4 + 0.6 * tail), 0.1);
   const g = ctx.createLinearGradient(0, 0, w, 0);
   g.addColorStop(0, "rgba(120,200,255,0)");
   g.addColorStop(0.5, withAlpha(WHITE, 0.85 * Math.exp(-t / 7) + 0.08 * (1 - prog(t, 8, 30))));
@@ -1308,7 +1419,8 @@ const drawBlast = (ctx: CanvasRenderingContext2D, w: number, f: number, cam: Cam
 const drawNetwork = (ctx: CanvasRenderingContext2D, w: number, h: number, f: number, cam: Cam, O: Pt & { s: number; z: number }) => {
   const t = f - IMPACT;
   if (t < 0) return;
-  const expand = 1 + 0.1 * prog(t, 0, 15) + 0.65 * ease.inOutSine(prog(t, 15, DUR - IMPACT + 20));
+  // front-loaded: the network keeps bursting outward right after the blast, then keeps growing slowly
+  const expand = 1 + 0.12 * prog(t, 0, 15) + 0.75 * ease.outCubic(prog(t, 12, DUR - IMPACT + 10));
   const spin = 0.0022 * t;
   const cs = Math.cos(spin);
   const sn = Math.sin(spin);
@@ -1338,9 +1450,15 @@ const drawNetwork = (ctx: CanvasRenderingContext2D, w: number, h: number, f: num
       }
     }
   }
-  const born = clamp(t / 5);
+  // the sparks own the first frames; the network fades in from inside them
+  const born = ease.inOutSine(clamp((t - 4) / 16));
   // a shell that is still tiny on screen is dim (otherwise the first frames pile up into a white disc)
   const vis = scales.map((R) => clamp((R * O.s - 30) / 150));
+  // ...and so is a shell whose nodes are still packed too tightly on screen to read as separate points
+  const sparse = scales.map((R, k) => {
+    const rs = dist > R * 1.05 ? (FOCAL * R) / Math.sqrt(dist * dist - R * R) : 9999;
+    return clamp(rs / (26 * Math.sqrt(SHELL_N[k])));
+  });
   // edges
   const buckets: Seg[] = Array.from({ length: N_BUCKET }, () => []);
   for (let i = 0; i < EDGES.length; i++) {
@@ -1356,7 +1474,7 @@ const drawNetwork = (ctx: CanvasRenderingContext2D, w: number, h: number, f: num
     if (fog < 0.05) continue;
     // radial wiring grows outward from the inner node
     const g = e.cls ? 1 : clamp((t - SHELL_DELAY[e.k] - 1) / 5);
-    buckets[e.key + (fog > 0.62 ? 1 : 0)].push(A.x, A.y, lerp(A.x, B.x, g), lerp(A.y, B.y, g));
+    pushStub(buckets[e.key + (fog > 0.62 ? 1 : 0)], A, B, g, e.cls ? 280 : 200, e.cls ? 440 : 340);
   }
   buckets.forEach((sg, key) => {
     if (!sg.length) return;
@@ -1397,15 +1515,20 @@ const drawNetwork = (ctx: CanvasRenderingContext2D, w: number, h: number, f: num
     chromaRing(ctx, O.x, O.y, rs, rs, a, 2.4, WAVE_COLS[wv % WAVE_COLS.length]);
   }
   // signals: forward passes racing outward layer by layer on each wave, plus constant chatter
-  const sig: Seg = [];
+  // signal tails take the colour of the region they run through; only the heads are white-hot
+  const sig: Seg[] = HUE_COLS.map(() => []);
   const sgb = new GlowBatch();
   const sigGlow = (A: Pt, B: Pt & { z: number; s: number }, u: number, hue: number, br: number) => {
     const x = lerp(A.x, B.x, u);
     const y = lerp(A.y, B.y, u);
-    const u0 = Math.max(0, u - 0.5);
-    sig.push(lerp(A.x, B.x, u0), lerp(A.y, B.y, u0), x, y);
+    if (Math.hypot(B.x - A.x, B.y - A.y) < 260) {
+      const u0 = Math.max(0, u - 0.4);
+      sig[hue].push(lerp(A.x, B.x, u0), lerp(A.y, B.y, u0), x, y);
+    }
     sgb.add(PAL[hue][0], x, y, clamp(0.3 * B.s, 5, 18), br * fogOf(B.z));
   };
+  // wiring a pass has just crossed: coloured by region, fainter on the big outer layers
+  const lit: Seg[] = Array.from({ length: HUE_COLS.length * 3 }, () => []);
   for (let wv = 0; wv < WAVES.length; wv++) {
     const dt = f - WAVES[wv];
     if (dt < 0 || dt > (NSH + 1) * SIG_D) continue;
@@ -1420,25 +1543,23 @@ const drawNetwork = (ctx: CanvasRenderingContext2D, w: number, h: number, f: num
         sigGlow(A, B, u, NODES[e.b].hue, 1);
       }
     }
-    // the wiring a pass has just crossed keeps glowing for a moment in the wave's colour
-    const lit: Seg = [];
-    let litA = 0;
+    // the wiring a pass has just crossed keeps glowing for a moment
     for (let k = 0; k < NSH; k++) {
       const da = dt - (k + 1) * SIG_D;
       if (da < 0 || da > 12) continue;
       const a = Math.exp(-da / 4);
-      litA = Math.max(litA, a);
+      const tier = k < 6 ? 0 : k < 8 ? 1 : 2;
       for (const i of RADIAL[k]) {
         if (hash(i * 0.73) > a) continue;
         const e = EDGES[i];
         const B = pos[e.b];
         const A = e.a < 0 ? O : pos[e.a];
         if (!A || !B || (outside(A) && outside(B)) || fogOf(B.z) < 0.15) continue;
-        lit.push(A.x, A.y, B.x, B.y);
+        pushStub(lit[NODES[e.b].hue * 3 + tier], A, B, 1, 170, 300);
       }
     }
-    strokeSegs(ctx, lit, WAVE_COLS[wv % WAVE_COLS.length], 1.4, 0.3);
   }
+  lit.forEach((sg, j) => strokeSegs(ctx, sg, PAL[Math.floor(j / 3)][1], 1.4, [0.3, 0.2, 0.12][j % 3]));
   if (t > 14) {
     const chat = clamp((t - 14) / 20);
     for (let k = 1; k < NSH; k++) {
@@ -1455,8 +1576,10 @@ const drawNetwork = (ctx: CanvasRenderingContext2D, w: number, h: number, f: num
       }
     }
   }
-  strokeSegs(ctx, sig, WHITE, 4, 0.12);
-  strokeSegs(ctx, sig, WHITE, 1.5, 0.6);
+  sig.forEach((sg, hue) => {
+    strokeSegs(ctx, sg, PAL[hue][2], 4, 0.12);
+    strokeSegs(ctx, sg, PAL[hue][1], 1.5, 0.6);
+  });
   sgb.flush(ctx);
   const ngb = new GlowBatch();
   const wgb = new GlowBatch();
@@ -1471,10 +1594,10 @@ const drawNetwork = (ctx: CanvasRenderingContext2D, w: number, h: number, f: num
     const pop = clamp(bt / 4) * (n.k < 4 ? 0.3 + 0.15 * n.k : 1);
     // the ragged outer rim fades out instead of ending in a hard edge
     const rimFade = n.k >= NSH - 2 ? 1.2 - 0.6 * n.rj : 1;
-    const fog = fogOf(p.z) * rimFade * vis[n.k];
+    const fog = fogOf(p.z) * rimFade * vis[n.k] * sparse[n.k] * born;
     if (fog < 0.03 || pop <= 0) continue;
     const odd = n.k % 2;
-    const r = clamp(0.17 * p.s, 2.2, 10) * (odd ? 0.75 : 1.1) * (1 + 0.8 * act + 0.6 * flare);
+    const r = clamp(0.17 * p.s, 2.2, 10) * (odd ? 0.72 : 1.3) * (1 + 0.8 * act + 0.6 * flare);
     ngb.add(PAL[n.hue][n.lvl], p.x, p.y, Math.min(20, r * 2.5), (odd ? 0.42 : 0.66) * (1 + 0.6 * act) * fog * pop);
     const fl = n.k >= 3 ? flare : 0;
     if (act > 0.15 || n.h < 0.1 || fl > 0.2) wgb.add(WHITE, p.x, p.y, Math.min(9, r), (0.3 + 0.6 * act + 0.4 * fl) * fog * pop);
@@ -1543,11 +1666,16 @@ const drawScene = (ctx: CanvasRenderingContext2D, w: number, h: number, f: numbe
   const band = bandAt(f);
   if (band > 0) {
     g.globalCompositeOperation = "destination-out";
-    const m = g.createLinearGradient(0, 725, 0, 815);
-    m.addColorStop(0, "rgba(0,0,0,0)");
-    m.addColorStop(1, `rgba(0,0,0,${band})`);
+    // (during the streams the action sits low in the frame, so the fade starts lower there)
+    const M0 = f < IMPACT ? 690 : 625;
+    const M1 = 822;
+    const m = g.createLinearGradient(0, M0, 0, M1);
+    for (let i = 0; i <= 8; i++) {
+      const u = i / 8;
+      m.addColorStop(u, `rgba(0,0,0,${band * u * u * (3 - 2 * u)})`);
+    }
     g.fillStyle = m;
-    g.fillRect(0, 725, w, h - 725);
+    g.fillRect(0, M0, w, h - M0);
   }
   ctx.globalCompositeOperation = "lighter";
   ctx.drawImage(L, 0, 0);
@@ -1670,17 +1798,22 @@ export const Converge: React.FC = () => {
   const frame = useCurrentFrame();
   const c = chargeAt(frame);
   const sh = sumShake(shake(frame, IMPACT, 66, 50), shake(frame, IMPACT + 3, 26, 90), shake(frame, MEET, 22, 20));
-  const env =
-    frame >= IMPACT ? Math.max(Math.pow(1 - prog(frame, IMPACT, IMPACT + 50), 2), 0.4 * Math.pow(1 - prog(frame, IMPACT + 3, IMPACT + 93), 2)) : 0;
-  const trem = frame < IMPACT ? (noise1(frame * 0.9) - 0.5) * 12 * c * c : 0;
-  const tremY = frame < IMPACT ? (noise1(frame * 0.9 + 40) - 0.5) * 12 * c * c : 0;
-  // zoom punch on the impact, plus overscan so the shaken frame never shows its edges
-  const punch = (frame >= IMPACT ? 1 + 0.07 * Math.exp(-(frame - IMPACT) / 6) : 1) * (1 + 0.1 * env + 0.014 * c * c);
+  const tx = sh.x + (frame < IMPACT ? (noise1(frame * 0.9) - 0.5) * 12 * c * c : 0);
+  const ty = sh.y + (frame < IMPACT ? (noise1(frame * 0.9 + 40) - 0.5) * 12 * c * c : 0);
+  const rot = sh.r * 0.08;
+  // zoom punch on the impact; the overscan is the smallest zoom at which the shaken, rolled frame still
+  // covers the whole screen, so no edge ever shows
+  const cr = Math.cos(rot);
+  const sr = Math.abs(Math.sin(rot));
+  const ex = 960 + Math.abs(tx);
+  const ey = 540 + Math.abs(ty);
+  const cover = 1.002 * Math.max((ex * cr + ey * sr) / 960, (ex * sr + ey * cr) / 540);
+  const punch = Math.max(frame >= IMPACT ? 1 + 0.07 * Math.exp(-(frame - IMPACT) / 6) : 1, cover);
   const fade = Math.min(ease.outCubic(prog(frame, 0, 14)), 1 - prog(frame, DUR - 16, DUR));
   return (
     <AbsoluteFill style={{ background: "#000" }}>
       <AbsoluteFill style={{ opacity: fade }}>
-        <AbsoluteFill style={{ transform: `translate(${sh.x + trem}px, ${sh.y + tremY}px) rotate(${sh.r * 0.12}rad) scale(${punch})` }}>
+        <AbsoluteFill style={{ transform: `translate(${tx}px, ${ty}px) rotate(${rot}rad) scale(${punch})` }}>
           <World />
           <Labels />
         </AbsoluteFill>

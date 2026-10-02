@@ -3,7 +3,7 @@
 import { glow, glowStroke, mix, withAlpha } from "../../lib/canvas";
 import { clamp, ease, hash, rng } from "../../lib/math";
 import { C } from "../../lib/theme";
-import { Cam, camAt, EARTH_C, FINAL, FOCAL, R_EARTH } from "./cam";
+import { Cam, camAt, EARTH_C, FINAL, FOCAL, NETWORK, R_EARTH } from "./cam";
 
 type G = CanvasRenderingContext2D;
 type V = [number, number, number];
@@ -55,8 +55,8 @@ const fbm = (n: V, base: number, oct: number, off = 0) => {
 const N0: V = [0, -1, 0];
 const toN = (lat: number, lon: number): V => [Math.cos(lat) * Math.sin(lon), -Math.cos(lat) * Math.cos(lon), Math.sin(lat)];
 
-const MW = 512;
-const MH = 256;
+const MW = 1024;
+const MH = 512;
 let mask: Float32Array | null = null;
 let THRESH = 0.5;
 const rawLand = (n: V) => {
@@ -105,7 +105,10 @@ export const landAt = (x: number, y: number, z: number) => {
   const xb = (xa + 1) % MW;
   const v =
     (m[y0 * MW + xa] * (1 - tx) + m[y0 * MW + xb] * tx) * (1 - ty) + (m[(y0 + 1) * MW + xa] * (1 - tx) + m[(y0 + 1) * MW + xb] * tx) * ty;
-  const det = (vn3(n[0] * 60, n[1] * 60, n[2] * 60) - 0.5) * 0.05 + (vn3(n[0] * 170 + 5, n[1] * 170, n[2] * 170) - 0.5) * 0.025;
+  const det =
+    (vn3(n[0] * 60, n[1] * 60, n[2] * 60) - 0.5) * 0.06 +
+    (vn3(n[0] * 170 + 5, n[1] * 170, n[2] * 170) - 0.5) * 0.035 +
+    (vn3(n[0] * 460 - 3, n[1] * 460 + 1, n[2] * 460) - 0.5) * 0.018;
   return v + det - THRESH;
 };
 
@@ -176,7 +179,7 @@ const globeLights = () => {
   if (lights) return lights;
   popMap();
   const R = popR!;
-  const N = 340000;
+  const N = 520000;
   const ga = Math.PI * (3 - Math.sqrt(5));
   const tmpN: number[] = [];
   const tmpB: number[] = [];
@@ -208,44 +211,75 @@ const globeLights = () => {
 // data-centre sites (ours first) and the network arcs between them
 type Site = { n: V; t: number };
 let sites: Site[] | null = null;
-const SITE_T0 = 754;
+const SITE_T0 = NETWORK;
 const WAVE = 0.05; // rad per frame
+/** Centre of the visible disc at the end of the scene (the final camera's sub-point). */
+let SUBP: V | null = null;
+const subPoint = (): V => {
+  if (SUBP) return SUBP;
+  const c = camAt(805);
+  SUBP = norm([c.x - EARTH_C[0], c.y - EARTH_C[1], c.z - EARTH_C[2]]);
+  return SUBP;
+};
+const ang = (a: V, b: V) => Math.acos(clamp(dot(a, b), -1, 1));
 const dataCentres = () => {
   if (sites) return sites;
   const L = globeLights();
   const out: Site[] = [{ n: N0, t: SITE_T0 }];
   const cand: { n: V; b: number }[] = [];
-  for (let i = 0; i < L.cnt; i += 3) if (L.b[i] > 0.6) cand.push({ n: [L.n[i * 3], L.n[i * 3 + 1], L.n[i * 3 + 2]], b: L.b[i] });
+  for (let i = 0; i < L.cnt; i += 3) if (L.b[i] > 0.55) cand.push({ n: [L.n[i * 3], L.n[i * 3 + 1], L.n[i * 3 + 2]], b: L.b[i] });
   cand.sort((a, b) => b.b - a.b);
+  const sub = subPoint();
+  // a local frame around our campus: candidate sites are binned by direction so the network surrounds the hub
+  const ex: V = norm([1, 0, 0]);
+  const ez: V = norm([0, 0, 1]);
+  const bins = new Array(12).fill(0);
   for (const c of cand) {
-    if (out.length >= 24) break;
-    if (out.every((s) => Math.acos(clamp(dot(s.n, c.n), -1, 1)) > 0.3)) out.push({ n: c.n, t: 0 });
+    if (out.length >= 30) break;
+    if (ang(sub, c.n) > 1.02) continue; // only sites well inside the disc seen at the end: no arcs dangling past the limb
+    const d0 = ang(N0, c.n);
+    if (d0 < 0.16 || d0 > 0.95) continue;
+    const az = Math.atan2(dot(c.n, ez), dot(c.n, ex));
+    const bi = Math.floor(((az / (Math.PI * 2) + 1) % 1) * 12);
+    if (bins[bi] >= 3) continue;
+    if (out.every((s) => ang(s.n, c.n) > 0.17)) {
+      out.push({ n: c.n, t: 0 });
+      bins[bi]++;
+    }
   }
   // ignition: when the light wave from our campus sweeps over them
-  out.slice(1).forEach((s) => (s.t = SITE_T0 + Math.acos(clamp(dot(s.n, N0), -1, 1)) / WAVE));
+  out.slice(1).forEach((s) => (s.t = SITE_T0 + ang(s.n, N0) / WAVE));
   sites = out;
   return out;
 };
-type Arc = { a: number; b: number; t0: number };
+/** kind 0: from our campus, 1: regional mesh, 2: long-haul backbone. */
+type Arc = { a: number; b: number; t0: number; kind: number };
 let arcs: Arc[] | null = null;
 const arcList = () => {
   if (arcs) return arcs;
   const S = dataCentres();
   const out: Arc[] = [];
-  for (let i = 1; i < S.length; i++) out.push({ a: 0, b: i, t0: SITE_T0 });
-  // a few links between the other sites (nearest neighbours)
+  const has = (i: number, j: number) => out.some((o) => (o.a === j && o.b === i) || (o.a === i && o.b === j));
+  for (let i = 1; i < S.length; i++) if (ang(S[0].n, S[i].n) < 0.7 || i % 3 === 0) out.push({ a: 0, b: i, t0: SITE_T0, kind: 0 });
+  // the regional mesh between the other sites: each one to its three nearest neighbours
   for (let i = 1; i < S.length; i++) {
-    let best = -1;
-    let bd = 9;
-    for (let j = 1; j < S.length; j++) {
-      if (j === i) continue;
-      const d = Math.acos(clamp(dot(S[i].n, S[j].n), -1, 1));
-      if (d < bd && !out.some((o) => (o.a === j && o.b === i) || (o.a === i && o.b === j))) {
-        bd = d;
-        best = j;
-      }
+    const near: { j: number; d: number }[] = [];
+    for (let j = 1; j < S.length; j++) if (j !== i) near.push({ j, d: ang(S[i].n, S[j].n) });
+    near.sort((a, b) => a.d - b.d);
+    for (const { j, d } of near.slice(0, 3)) {
+      if (has(i, j) || d > 0.72) continue;
+      out.push({ a: i, b: j, t0: Math.max(S[i].t, S[j].t) + 3, kind: 1 });
     }
-    if (best > 0) out.push({ a: i, b: best, t0: Math.max(S[i].t, S[best].t) + 4 });
+  }
+  // a few long-haul links across the disc
+  let added = 0;
+  for (let k = 0; k < 400 && added < 2; k++) {
+    const i = 1 + Math.floor(hash(k * 7.13 + 0.5) * (S.length - 1));
+    const j = 1 + Math.floor(hash(k * 3.71 + 9.1) * (S.length - 1));
+    const d = ang(S[i].n, S[j].n);
+    if (i === j || has(i, j) || d < 0.7 || d > 1.05) continue;
+    out.push({ a: i, b: j, t0: Math.max(S[i].t, S[j].t) + 8, kind: 2 });
+    added++;
   }
   arcs = out;
   return out;
@@ -301,7 +335,7 @@ const drawStars = (g: G, c: Cam, f: number, a: number) => {
   g.globalCompositeOperation = "lighter";
   for (const s of starList()) {
     const p = dirToScreen(c, s.d);
-    if (!p || p.x < -4 || p.x > 1924 || p.y < -4 || p.y > 1084) continue;
+    if (!p || p.x < -4 - c.sx || p.x > 1924 - c.sx || p.y < -4 - c.sy || p.y > 1084 - c.sy) continue;
     const tw = 0.75 + 0.25 * Math.sin(f * 0.15 + s.b * 400);
     const sz = 0.8 + 2.2 * s.b;
     g.globalAlpha = a * clamp(0.18 + s.b * 1.4) * tw;
@@ -326,16 +360,18 @@ const drawBase = (g: G, c: Cam, f: number, a: number, lightA: number) => {
   const R2 = R_EARTH * R_EARTH;
   // screen-space bounds of the globe
   const gc = globeCircle(c);
-  let x0 = 0;
-  let y0 = 0;
-  let x1 = 1920;
-  let y1 = 1080;
+  const X0 = Math.floor(-c.sx);
+  const Y0 = Math.floor(-c.sy);
+  let x0 = X0;
+  let y0 = Y0;
+  let x1 = X0 + 1921;
+  let y1 = Y0 + 1081;
   if (gc && gc.r < 2400) {
     const m = gc.r * 1.06 + 8;
-    x0 = Math.max(0, Math.floor(gc.x - m));
-    y0 = Math.max(0, Math.floor(gc.y - m));
-    x1 = Math.min(1920, Math.ceil(gc.x + m));
-    y1 = Math.min(1080, Math.ceil(gc.y + m));
+    x0 = Math.max(X0, Math.floor(gc.x - m));
+    y0 = Math.max(Y0, Math.floor(gc.y - m));
+    x1 = Math.min(X0 + 1921, Math.ceil(gc.x + m));
+    y1 = Math.min(Y0 + 1081, Math.ceil(gc.y + m));
   }
   if (x1 - x0 < 4 || y1 - y0 < 4) return;
   const sx = Math.max(2.5, Math.sqrt(((x1 - x0) * (y1 - y0)) / MAX_RAYS));
@@ -357,6 +393,7 @@ const drawBase = (g: G, c: Cam, f: number, a: number, lightA: number) => {
   const camH = Math.sqrt(oo) - R_EARTH;
   // ground context while we are still low: terrain texture + aerial haze towards the far (upper) part of the frame
   const lowK = 1 - clamp((camH - 1.2e6) / 3e6);
+  const popK = lightA * (gc ? clamp((900 - gc.r) / 400) : 0);
   for (let py = 0; py < BH; py++)
     for (let px = 0; px < BW; px++) {
       const x = x0 + (px + 0.5) * sx - 960;
@@ -382,9 +419,9 @@ const drawBase = (g: G, c: Cam, f: number, a: number, lightA: number) => {
       const land = clamp((landAt(n[0], n[1], n[2]) + 0.012) / 0.024);
       const ndl = dot(n, S);
       const mu = clamp(-dot(d, n));
-      let r = 2 + 9 * land;
-      let gg = 5 + 11 * land;
-      let bb = 13 + 12 * land;
+      let r = 2 + 12 * land;
+      let gg = 5 + 16 * land;
+      let bb = 13 + 20 * land;
       if (lowK > 0 && land > 0) {
         // night terrain: value noise with level-of-detail by texel footprint
         const foot = t * pixAng;
@@ -411,22 +448,22 @@ const drawBase = (g: G, c: Cam, f: number, a: number, lightA: number) => {
       }
       const day = clamp((ndl + 0.04) / 0.3);
       if (day > 0) {
-        const k2 = day * (0.35 + 0.65 * clamp(ndl * 2));
-        r += k2 * (land ? 150 : 40) * (land * 0.9 + 0.1);
-        gg += k2 * (land * 130 + (1 - land) * 95);
-        bb += k2 * (land * 90 + (1 - land) * 175);
+        const k2 = day * day * (3 - 2 * day) * (0.3 + 0.5 * clamp(ndl * 2));
+        r += k2 * (land * 215 + (1 - land) * 30);
+        gg += k2 * (land * 150 + (1 - land) * 80);
+        bb += k2 * (land * 85 + (1 - land) * 150);
       }
-      const tw = Math.exp(-((ndl / 0.07) ** 2));
-      r += 120 * tw;
-      gg += 45 * tw;
-      bb += 20 * tw;
+      const tw = Math.exp(-((ndl / 0.06) ** 2));
+      r += 60 * tw;
+      gg += 20 * tw;
+      bb += 6 * tw;
       // soft city-light glow of populated regions, only well inside the night side
       const nightK = clamp((-0.04 - ndl) / 0.2);
-      if (nightK > 0 && lightA > 0) {
-        const em = Math.min(0.6, popAt(n) * nightK * lightA * clamp(mu * 4));
-        r += 140 * em;
-        gg += 80 * em;
-        bb += 30 * em;
+      if (nightK > 0 && popK > 0) {
+        const em = Math.min(0.15, popAt(n) * nightK * popK * clamp(mu * 4));
+        r += 120 * em;
+        gg += 86 * em;
+        bb += 40 * em;
       }
       const rim = Math.pow(1 - mu, 3);
       const rimDay = 0.35 + 1.6 * clamp(ndl + 0.3);
@@ -512,36 +549,35 @@ const drawAtmosphere = (g: G, c: Cam, f: number, a: number) => {
     g.arc(gc.x, gc.y, gc.r * 0.999, 0, Math.PI * 2);
     g.stroke();
   }
-  // the sun peeking over the limb (+ a short warm bloom on the final beat)
+  // the sun peeking over the limb: a small hot core just outside the disc, never over the land
   const fl = a * clamp((f - 735) / 40);
   const ft = f - FINAL;
   const burst = ft >= 0 && ft < 14 ? Math.pow(1 - ft / 14, 2) : 0;
   if (fl > 0) {
-    const fx = gc.x + ux * gc.r * 1.015;
-    const fy = gc.y + uy * gc.r * 1.015;
-    glow(g, fx, fy, (260 + 260 * burst) * fl, "#ffb860", (0.55 + 0.35 * burst) * fl, 0.04);
-    glow(g, fx, fy, 70 + 60 * burst, "#fff4e0", 0.95 * fl, 0.25);
-    if (burst > 0) glow(g, fx, fy, 900 * (0.6 + 0.4 * burst), "#ffcf8a", 0.22 * burst * fl, 0.02);
-    const st = g.createLinearGradient(fx - 380, fy, fx + 380, fy);
+    const fx = gc.x + ux * gc.r * 1.045;
+    const fy = gc.y + uy * gc.r * 1.045;
+    glow(g, fx, fy, (150 + 120 * burst) * fl, "#ff9a50", (0.32 + 0.25 * burst) * fl, 0.03);
+    glow(g, fx, fy, 22 + 18 * burst, "#fff4e0", 0.95 * fl, 0.35);
+    const st = g.createLinearGradient(fx - 420, fy, fx + 420, fy);
     st.addColorStop(0, withAlpha("#7fc8ff", 0));
-    st.addColorStop(0.5, withAlpha("#ffffff", (0.75 + 0.25 * burst) * fl));
+    st.addColorStop(0.5, withAlpha("#ffffff", (0.7 + 0.3 * burst) * fl));
     st.addColorStop(1, withAlpha("#7fc8ff", 0));
     g.fillStyle = st;
-    const sw = 380 + 420 * burst;
+    const sw = 420 + 380 * burst;
     g.save();
     g.translate(fx, fy);
-    g.scale(sw / 380, 1);
-    g.fillRect(-380, -2 - 2 * burst, 760, 4 + 4 * burst);
+    g.scale(sw / 420, 1);
+    g.fillRect(-420, -1.2 - 1.5 * burst, 840, 2.4 + 3 * burst);
     g.restore();
     // lens ghosts along the axis through the frame centre
     for (const [k, r, col] of [
-      [0.5, 46, "#7fffd4"],
-      [1.35, 28, "#ff9ad5"],
-      [1.7, 70, "#7fa8ff"],
+      [0.5, 40, "#7fffd4"],
+      [1.35, 24, "#ff9ad5"],
+      [1.7, 60, "#7fa8ff"],
     ] as [number, number, string][]) {
-      const gx = fx + (960 - fx) * k;
-      const gy = fy + (540 - fy) * k;
-      glow(g, gx, gy, r, col, 0.16 * fl, 0.5);
+      const gx = fx + (960 - c.sx - fx) * k;
+      const gy = fy + (540 - c.sy - fy) * k;
+      glow(g, gx, gy, r, col, 0.12 * fl, 0.5);
     }
   }
   g.restore();
@@ -558,6 +594,9 @@ const drawLights = (g: G, c: Cam, f: number, a: number) => {
   g.save();
   g.globalCompositeOperation = "lighter";
   const cols = ["#ffb35c", "#ffe0a8"];
+  // lights grow a little while the globe is still big on screen
+  const gR = (FOCAL * R_EARTH) / Math.sqrt(Math.max(1, od * od - R_EARTH * R_EARTH));
+  const sz = clamp(gR / 520, 1, 1.8);
   for (let pass = 0; pass < 2; pass++) {
     g.fillStyle = cols[pass];
     for (let i = pass; i < L.cnt; i += 2) {
@@ -581,18 +620,19 @@ const drawLights = (g: G, c: Cam, f: number, a: number) => {
       if (z2 <= 0) continue;
       const sx = 960 + (x1 / z2) * FOCAL;
       const sy = 540 + (y2 / z2) * FOCAL;
-      if (sx < -4 || sx > 1924 || sy < -4 || sy > 1084) continue;
+      if (sx < -4 - c.sx || sx > 1924 - c.sx || sy < -4 - c.sy || sy > 1084 - c.sy) continue;
       const b = L.b[i];
       const limb = clamp(facing * 9);
-      g.globalAlpha = Math.min(0.62, a * night * limb * (0.3 + 0.6 * b));
-      const s = 0.9 + 1.1 * b;
+      g.globalAlpha = Math.min(0.8, a * night * limb * (0.4 + 0.6 * b));
+      const s = (0.9 + 1.1 * b) * sz;
       g.fillRect(sx - s / 2, sy - s / 2, s, s);
-      if (b > 0.9 && big.length < 1200) big.push(sx, sy, a * night * limb * b);
+      if (b > 0.85 && big.length < 4500) big.push(sx, sy, a * night * limb * b);
     }
   }
   g.globalAlpha = 1;
-  const bigA = clamp((od - R_EARTH - 6e6) / 8e6);
-  if (bigA > 0) for (let i = 0; i < big.length; i += 3) glow(g, big[i], big[i + 1], 5, "#ffb35c", big[i + 2] * 0.35 * bigA);
+  const gr = (FOCAL * R_EARTH) / Math.sqrt(Math.max(1, od * od - R_EARTH * R_EARTH));
+  const br = clamp(gr / 110, 3.5, 9);
+  for (let i = 0; i < big.length; i += 3) glow(g, big[i], big[i + 1], br, "#ffb35c", big[i + 2] * 0.4);
   g.restore();
 };
 
@@ -635,16 +675,19 @@ const drawNetwork = (g: G, c: Cam, f: number, a: number) => {
   if (a <= 0.01) return;
   const S = dataCentres();
   const A = arcList();
+  const ft = f - FINAL;
+  // the final beat: every link flares white at once, then settles
+  const fin = ft >= -1 && ft < 22 ? (ft < 0 ? 0.5 : Math.pow(1 - ft / 22, 1.5)) : 0;
   g.save();
   g.globalCompositeOperation = "lighter";
   A.forEach((arc, ai) => {
-    const dur = arc.a === 0 ? Math.max(10, S[arc.b].t - arc.t0) : 22;
-    const rv = arc.a === 0 ? clamp((f - arc.t0) / dur) : ease.inOutCubic(clamp((f - arc.t0) / dur));
+    const dur = arc.kind === 0 ? Math.max(10, S[arc.b].t - arc.t0) : arc.kind === 1 ? 18 : 26;
+    const rv = arc.kind === 0 ? clamp((f - arc.t0) / dur) : ease.inOutCubic(clamp((f - arc.t0) / dur));
     if (rv <= 0) return;
     const na = S[arc.a].n;
     const nb = S[arc.b].n;
     const om = Math.acos(clamp(dot(na, nb), -1, 1));
-    const H = (0.025 + 0.13 * (om / Math.PI)) * R_EARTH;
+    const H = Math.min(0.06, 0.012 + 0.055 * om) * R_EARTH;
     const N = 56;
     const pts: ({ x: number; y: number } | null)[] = [];
     for (let i = 0; i <= N; i++) {
@@ -652,7 +695,11 @@ const drawNetwork = (g: G, c: Cam, f: number, a: number) => {
       const P = arcPoint(na, nb, t, Math.sin(Math.PI * t) * H);
       pts.push(occluded(c, P) ? null : project(c, P));
     }
-    const col = arc.a === 0 ? (ai % 2 ? C.cyan : "#7fd8ff") : C.magenta;
+    const hub = arc.kind === 0;
+    const col0 = hub ? (ai % 2 ? C.cyan : "#7fd8ff") : arc.kind === 1 ? C.magenta : C.violet;
+    const col = fin > 0 ? mix(col0, "#ffffff", 0.75 * fin) : col0;
+    const wv = hub ? 1.2 + 1.0 * hash(ai * 4.1) : arc.kind === 1 ? 1.0 + 0.7 * hash(ai * 2.3) : 1.6;
+    const av = (hub ? 0.55 + 0.4 * hash(ai * 6.7) : 0.7 + 0.3 * hash(ai * 1.9)) * (1 + 0.6 * fin);
     // draw visible runs
     let run: { x: number; y: number }[] = [];
     const flush = () => {
@@ -661,7 +708,7 @@ const drawNetwork = (g: G, c: Cam, f: number, a: number) => {
         glowStroke(g, () => {
           g.moveTo(r[0].x, r[0].y);
           for (let i = 1; i < r.length; i++) g.lineTo(r[i].x, r[i].y);
-        }, col, 1.6, 0.85 * a);
+        }, col, wv * (1 + 1.4 * fin), Math.min(1, av * a));
       }
       run = [];
     };
@@ -683,9 +730,41 @@ const drawNetwork = (g: G, c: Cam, f: number, a: number) => {
         const P = arcPoint(na, nb, t, Math.sin(Math.PI * t) * H);
         if (occluded(c, P)) continue;
         const p = project(c, P);
-        if (p) glow(g, p.x, p.y, 9, mix(col, "#ffffff", 0.5), a * 0.95);
+        if (p) glow(g, p.x, p.y, 9 + 8 * fin, mix(col, "#ffffff", 0.5), a * 0.95);
       }
   });
+  // the final beat: a shock ring races out from our campus across the globe
+  if (ft >= 0 && ft < 30) {
+    const th2 = 0.03 + ft * 0.055;
+    const fade = Math.pow(1 - ft / 30, 1.3);
+    const N0x: V = [1, 0, 0];
+    const N0z: V = [0, 0, 1];
+    const pts: ({ x: number; y: number } | null)[] = [];
+    for (let i = 0; i <= 140; i++) {
+      const ph = (i / 140) * Math.PI * 2;
+      const ct = Math.cos(th2);
+      const st = Math.sin(th2);
+      const n: V = [N0[0] * ct + (N0x[0] * Math.cos(ph) + N0z[0] * Math.sin(ph)) * st, N0[1] * ct + (N0x[1] * Math.cos(ph) + N0z[1] * Math.sin(ph)) * st, N0[2] * ct + (N0x[2] * Math.cos(ph) + N0z[2] * Math.sin(ph)) * st];
+      const P: V = [EARTH_C[0] + n[0] * R_EARTH * 1.004, EARTH_C[1] + n[1] * R_EARTH * 1.004, EARTH_C[2] + n[2] * R_EARTH * 1.004];
+      pts.push(occluded(c, P) ? null : project(c, P));
+    }
+    let run: { x: number; y: number }[] = [];
+    const flush = () => {
+      if (run.length > 1) {
+        const r = run;
+        glowStroke(g, () => {
+          g.moveTo(r[0].x, r[0].y);
+          for (let i = 1; i < r.length; i++) g.lineTo(r[i].x, r[i].y);
+        }, "#ffd6f4", 3.5 * fade + 1, a * fade);
+      }
+      run = [];
+    };
+    for (const p of pts) {
+      if (p) run.push(p);
+      else flush();
+    }
+    flush();
+  }
   // the wave of light sweeping out from our campus
   const th = (f - SITE_T0) * WAVE;
   if (th > 0 && th < 2.2) {
@@ -736,7 +815,8 @@ const drawNetwork = (g: G, c: Cam, f: number, a: number) => {
     if (!p) return;
     const pulse = 0.75 + 0.25 * Math.sin(f * 0.3 + i);
     const col = i === 0 ? C.cyan : C.magenta;
-    glow(g, p.x, p.y, (i === 0 ? 34 : 18) * pulse, col, a * lit);
+    glow(g, p.x, p.y, (i === 0 ? 34 : 18) * pulse * (1 + 0.8 * fin), col, a * lit);
+    if (i === 0 && fin > 0) glow(g, p.x, p.y, 150 * fin + 30, "#ffffff", 0.75 * fin * a, 0.1);
     const pop = f - s.t;
     if (pop >= 0 && pop < 10) glow(g, p.x, p.y, 40 * (1 - pop / 10) + 10, "#ffffff", a * (1 - pop / 10));
     glow(g, p.x, p.y, 5, "#ffffff", a * lit);

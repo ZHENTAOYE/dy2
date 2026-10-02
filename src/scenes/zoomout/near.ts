@@ -186,7 +186,7 @@ const drawBuildings = (g: G, c: Cam, f: number, alpha: number) => {
       for (let i = 0; i < nx; i++)
         for (let j = 0; j < ny; j++) {
           const hh = hash(b.id * 13.1 + i * 3.7 + j * 9.1 + seed * 1.3);
-          if (hh < (b.tall ? 0.42 : 0.6)) continue;
+          if (hh < (b.tall ? 0.36 : 0.5)) continue;
           const st = (i + 0.5) / nx;
           const t = (j + 0.5) / ny;
           const ax = ps[0]!.x + (ps[1]!.x - ps[0]!.x) * st;
@@ -194,7 +194,7 @@ const drawBuildings = (g: G, c: Cam, f: number, alpha: number) => {
           const bx = ps[3]!.x + (ps[2]!.x - ps[3]!.x) * st;
           const by = ps[3]!.y + (ps[2]!.y - ps[3]!.y) * st;
           const warm = hash(b.id + i * 0.31 + j * 0.77) < 0.72;
-          g.fillStyle = warm ? `rgba(255,196,120,${0.55 + 0.4 * hh})` : `rgba(190,222,255,${0.5 + 0.4 * hh})`;
+          g.fillStyle = warm ? `rgba(255,200,128,${Math.min(1, 0.75 + 0.4 * hh)})` : `rgba(195,226,255,${Math.min(1, 0.7 + 0.4 * hh)})`;
           g.fillRect(ax + (bx - ax) * t - ws / 2, ay + (by - ay) * t - ws * 0.35, ws, ws * 0.7);
         }
       g.restore();
@@ -267,13 +267,13 @@ const drawLamps = (g: G, c: Cam, alpha: number) => {
   g.globalCompositeOperation = "lighter";
   for (let i = 0; i < pools.length; i += 5) {
     const r = pools[i + 2];
-    glow(g, pools[i], pools[i + 1], r, LCOL[pools[i + 4]], alpha * pools[i + 3] * 0.32 * clamp((r - 2.2) / 4), 0.02);
+    glow(g, pools[i], pools[i + 1], r, LCOL[pools[i + 4]], alpha * pools[i + 3] * 0.46 * clamp((r - 2.2) / 4), 0.02);
   }
   for (let k = 0; k < 3; k++) {
     g.fillStyle = LCOL[k];
     const d = dots[k];
     for (let i = 0; i < d.length; i += 4) {
-      g.globalAlpha = Math.min(1, alpha * d[i + 3] * 0.95);
+      g.globalAlpha = Math.min(1, alpha * d[i + 3] * 1.35);
       const s = d[i + 2];
       g.fillRect(d[i] - s / 2, d[i + 1] - s / 2, s, s);
     }
