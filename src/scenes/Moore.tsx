@@ -14,6 +14,8 @@ const RUN = cue("moore", "run");
 const END = cue("moore", "end");
 const YEAR0 = cue("moore", "year0"); // the year counter starts here (soundtrack ticks follow yearAt)
 const STEP = 18; // frames per doubling in the intro demo
+const CARD = 70; // chapter card length (fades out 52..70); the chip rises as the card fades out
+const CAP1 = 70; // first caption (and the 1965 stamp) starts the frame the card is gone
 
 /** Displayed year during the run (accelerating). Exported for the soundtrack's tick math. */
 export const yearAt = (f: number) => 1971 + 53 * ease.inQuad(prog(f, YEAR0, END));
@@ -23,6 +25,8 @@ const CHIP_Y = 430;
 const CHIP_S = 470;
 
 const demoK = (f: number) => (f < SPLIT ? 0 : Math.min(6, Math.floor((f - SPLIT) / STEP) + 1));
+/** Pop of the current doubling, timed from its start (no re-pop once the 6th doubling has landed). */
+const demoPop = (f: number) => ease.outBack(clamp((f - SPLIT - (demoK(f) - 1) * STEP) / 8));
 
 /** Recursive die-shot: split blocks until `depth` runs out; leaves are striped, tinted, twinkling cells. */
 const drawDie = (
@@ -96,7 +100,7 @@ const ChipCanvas: React.FC = () => (
         ctx.lineTo(x0 + 160 + hash(i) * 400, y + 40);
         ctx.stroke();
       }
-      const appear = ease.outBack(prog(f, 60, 100));
+      const appear = ease.outBack(prog(f, 58, 98));
       if (appear <= 0) return;
       const x0 = CHIP_X - CHIP_S / 2;
       const y0 = CHIP_Y - CHIP_S / 2;
@@ -137,7 +141,7 @@ const ChipCanvas: React.FC = () => (
         const cw = CHIP_S / c;
         const ch = CHIP_S / r;
         const gap = Math.max(0.6, Math.min(8, cw * 0.12));
-        const pop = running || f < SPLIT ? 1 : ease.outBack(clamp(((f - SPLIT) % STEP) / 8));
+        const pop = running || f < SPLIT ? 1 : demoPop(f);
         ctx.globalCompositeOperation = "lighter";
         for (let i = 0; i < n; i++) {
           const cx = x0 + (i % c) * cw;
@@ -253,8 +257,7 @@ const DemoHud: React.FC = () => {
   const frame = useCurrentFrame();
   if (frame < SPLIT || frame > RUN + 10) return null;
   const k = demoK(frame);
-  const t = (frame - SPLIT) % STEP;
-  const pop = ease.outBack(clamp(t / 8));
+  const pop = demoPop(frame);
   const a = 1 - prog(frame, RUN - 10, RUN + 5);
   return (
     <div style={{ position: "absolute", left: 200, top: 300, opacity: a }}>
@@ -273,7 +276,7 @@ export const Moore: React.FC = () => {
   const ramp = frame > YEAR0 ? clamp((frame - YEAR0) / (END - YEAR0)) : 0;
   const jitter = frame < END ? (hash(frame * 1.3) - 0.5) * 8 * ramp * ramp : 0;
   const sh = shake(frame, END, 30, 24);
-  const out = prog(frame, DUR - 25, DUR);
+  const out = prog(frame, DUR - 19, DUR - 1); // starts with caption 6's exit; fully black on the last frame
   return (
     <AbsoluteFill style={{ background: C.bg, opacity: 1 - out }}>
       <AbsoluteFill style={{ transform: `translate(${sh.x + jitter}px, ${sh.y + jitter * 0.6}px)` }}>
@@ -281,18 +284,19 @@ export const Moore: React.FC = () => {
         <DemoHud />
         <RunHud />
       </AbsoluteFill>
-      <YearStamp year="1965" label="摩尔定律" from={84} to={RUN - 10} color={C.green} />
-      <ChapterCard index={3} title="翻倍的力量" en="THE POWER OF DOUBLING" color={C.green} dur={78} />
+      <YearStamp year="1965" label="摩尔定律" from={CAP1} to={RUN - 10} color={C.green} />
+      <ChapterCard index={3} title="翻倍的力量" en="THE POWER OF DOUBLING" color={C.green} dur={CARD} />
       <Flash at={END} dur={16} color={C.green} peak={0.7} />
       <Captions
         accent={C.green}
         items={[
-          { from: 84, to: 196, text: "1965年，{{戈登·摩尔}}提出了一个大胆的预言：" },
-          { from: 200, to: 338, text: "芯片上的晶体管数量，大约每{{两年翻一番}}。" },
-          { from: 345, to: 470, text: "1971年，第一款商用微处理器只有{{2300个}}晶体管。" },
-          { from: 474, to: 612, text: "此后每隔两年左右，这个数字就{{翻一番}}——" },
-          { from: 616, to: END - 4, text: "53年，整整翻了{{约26次}}。" },
-          { from: END + 6, to: DUR - 12, text: "2024年，一块AI芯片上已有{{2080亿个}}晶体管。" },
+          // the first doubling pops as this caption's colon fades; caption 2 follows 6 frames later
+          { from: CAP1, to: SPLIT + 2, text: "1965年，{{戈登·摩尔}}提出了一个大胆的预言：" },
+          { from: SPLIT + 6, to: RUN - 8, text: "芯片上的晶体管数量，大约每{{两年翻一番}}。" },
+          { from: RUN - 4, to: RUN + 112, text: "1971年，第一款商用微处理器只有{{2300个}}晶体管。" },
+          { from: RUN + 116, to: END - 91, text: "此后每隔两年左右，这个数字就{{翻一番}}——" },
+          { from: END - 87, to: END - 2, text: "53年，整整翻了{{约26次}}。" },
+          { from: END + 3, to: DUR - 7, text: "2024年，一块AI芯片上已有{{2080亿个}}晶体管。" },
         ]}
       />
     </AbsoluteFill>

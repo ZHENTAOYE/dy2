@@ -188,7 +188,7 @@ const Machine: React.FC = () => (
       ctx.strokeStyle = "rgba(200,210,240,0.5)";
       ctx.strokeRect(cx - 520, WY, 1040, 58);
       // exposed pattern burning into the resist
-      const burn = clamp((f - BEAM - 40) / 80);
+      const burn = clamp((f - BEAM - 30) / 64);
       ctx.globalCompositeOperation = "lighter";
       MASK.forEach((m, i) => {
         if (!m) return;
@@ -305,21 +305,22 @@ export const Litho: React.FC = () => {
       <WaferView />
       {frame < WAFER - 20 ? (
         <>
-          <Callout x={1220} y={130} dx={160} dy={-30} text="紫外光" sub="UV LIGHT" from={BEAM + 10} to={WAFER - 20} color={UV} />
-          <Callout x={1260} y={347} dx={150} dy={0} text="掩模 · 电路图案" sub="PHOTOMASK" from={BEAM + 30} to={WAFER - 20} color={UV} />
-          <Callout x={1290} y={520} dx={130} dy={40} text="透镜 · 缩小投影" sub="REDUCTION LENS" from={BEAM + 50} to={WAFER - 20} color={UV} />
-          <Callout x={1480} y={808} dx={60} dy={-90} text="硅晶圆" sub="WAFER + PHOTORESIST" from={BEAM + 70} to={WAFER - 20} color={UV} />
+          <Callout x={1220} y={130} dx={160} dy={-30} text="紫外光" sub="UV LIGHT" from={BEAM + 8} to={WAFER - 20} color={UV} />
+          <Callout x={1260} y={347} dx={150} dy={0} text="掩模 · 电路图案" sub="PHOTOMASK" from={BEAM + 24} to={WAFER - 20} color={UV} />
+          <Callout x={1290} y={520} dx={130} dy={40} text="透镜 · 缩小投影" sub="REDUCTION LENS" from={BEAM + 40} to={WAFER - 20} color={UV} />
+          <Callout x={1480} y={808} dx={60} dy={-90} text="硅晶圆" sub="WAFER + PHOTORESIST" from={BEAM + 56} to={WAFER - 20} color={UV} />
         </>
       ) : null}
       <Counter />
-      <YearStamp year="1958" label="集成电路诞生" from={10} to={WAFER - 20} color={UV} />
+      <YearStamp year="1958" label="集成电路诞生" from={6} to={WAFER - 20} color={UV} />
       <Captions
         accent={"#b99bff"}
         items={[
-          { from: 14, to: 140, text: "1958年，{{集成电路}}诞生了：" },
-          { from: 143, to: 292, text: "把大量晶体管和导线，直接{{“印”在同一块硅片上}}。" },
-          { from: 300, to: 428, text: "以光为刀，像冲洗照片一样，{{一次印出成千上万个}}。" },
-          { from: 432, to: 556, text: "电路越印越精细，一块芯片上的晶体管{{越来越多}}。" },
+          { from: 10, to: WAFER - 126, text: "1958年，{{集成电路}}诞生了：" },
+          { from: WAFER - 122, to: WAFER - 4, text: "把大量晶体管和导线，直接{{“印”在同一块硅片上}}。" },
+          { from: WAFER, to: WAFER + 116, text: "以光为刀，像冲洗照片一样，{{一次印出成千上万个}}。" },
+          // ends exactly on the dive cue: fully faded before the dive whoosh starts (dive = 54f = whoosh 1.8 s)
+          { from: WAFER + 120, to: DIVE, text: "电路越印越精细，一块芯片上的晶体管{{越来越多}}。" },
         ]}
       />
     </AbsoluteFill>

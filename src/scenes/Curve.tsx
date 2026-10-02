@@ -29,6 +29,9 @@ const yLin = (v: number) => B - (v / LIN_MAX) * (B - T);
 const yLog = (v: number) => B - ((Math.log10(v) - LOG_MIN) / (LOG_MAX - LOG_MIN)) * (B - T);
 
 const morphAt = (f: number) => ease.inOutCubic(prog(f, MORPH, MORPH + 80));
+/** Tick labels cross-fade one after the other, so the linear and log sets never sit on top of each other mid-morph. */
+const linLabelA = (f: number) => 1 - ease.inOutQuad(prog(f, MORPH, MORPH + 24));
+const logLabelA = (f: number) => ease.inOutQuad(prog(f, MORPH + 20, MORPH + 56));
 /** Year the pen has reached; slow through the flat decades, then whips up. */
 const penAt = (f: number) => lerp(Y0, Y1, ease.inOutQuad(prog(f, DRAW, SPIKE + 6)));
 
@@ -157,16 +160,17 @@ const Labels: React.FC = () => {
   const a = ease.outCubic(prog(frame, 0, 25));
   const linTicks = ["0", "250亿", "500亿", "750亿", "1000亿"];
   const logTicks = ["1千", "1万", "10万", "100万", "1000万", "1亿", "10亿", "100亿", "1000亿", "1万亿"];
-  const flat = ease.outCubic(prog(frame, SPIKE - 50, SPIKE - 30)) * (1 - prog(frame, MORPH - 10, MORPH + 10));
+  // fades in while the pen is still crossing the flat 2000s (same pen progress as before the retime)
+  const flat = ease.outCubic(prog(frame, SPIKE - 40, SPIKE - 24)) * (1 - prog(frame, MORPH - 10, MORPH + 10));
   return (
     <AbsoluteFill style={{ opacity: a }}>
       {linTicks.map((t, i) => (
-        <div key={t} style={{ position: "absolute", right: 1920 - L + 18, top: yLin((LIN_MAX / 4) * i) - 16, fontFamily: FONT_CN, fontSize: 24, color: "rgba(255,255,255,0.6)", opacity: 1 - m }}>
+        <div key={t} style={{ position: "absolute", right: 1920 - L + 18, top: yLin((LIN_MAX / 4) * i) - 16, fontFamily: FONT_CN, fontSize: 24, color: "rgba(255,255,255,0.6)", opacity: linLabelA(frame) }}>
           {t}
         </div>
       ))}
       {logTicks.map((t, i) => (
-        <div key={t} style={{ position: "absolute", right: 1920 - L + 18, top: yLog(Math.pow(10, LOG_MIN + i)) - 16, fontFamily: FONT_CN, fontSize: 24, color: C.green, opacity: m }}>
+        <div key={t} style={{ position: "absolute", right: 1920 - L + 18, top: yLog(Math.pow(10, LOG_MIN + i)) - 16, fontFamily: FONT_CN, fontSize: 24, color: C.green, opacity: logLabelA(frame) }}>
           {t}
         </div>
       ))}
@@ -202,12 +206,16 @@ export const Curve: React.FC = () => {
       <Flash at={SPIKE} dur={12} color={C.green} peak={0.35} />
       <Captions
         accent={C.green}
+        // windows are near their minimums (c1 needs 75 f, c4 116 f): if SPIKE/LINE move, keep SPIKE >= 111
+        // and re-check every window against max(75, 24 + 4 x glyphs)
         items={[
-          { from: 14, to: 128, text: "把它画在普通坐标上——" },
-          { from: 132, to: 322, text: "前40年几乎{{贴着地面}}，最近几年却{{突然冲天}}。" },
-          { from: 330, to: 470, text: "换成对数坐标，每往上一格就是{{×10}}，" },
-          { from: 474, to: 590, text: "它其实是一条{{笔直的线}}：半个世纪，从未停止翻倍。" },
-          { from: 594, to: DUR - 8, text: "所谓“突然”，是{{指数增长}}给人的错觉。" },
+          { from: 14, to: SPIKE - 22, text: "把它画在普通坐标上——" },
+          // starts just ahead of the spike so “突然冲天” types in on the impact
+          { from: SPIKE - 18, to: MORPH - 4, text: "前40年几乎{{贴着地面}}，最近几年却{{突然冲天}}。" },
+          { from: MORPH, to: LINE - 30, text: "换成对数坐标，每往上一格就是{{×10}}，" },
+          // the doubling beats start marching as “翻倍” types in
+          { from: LINE - 26, to: LINE + 94, text: "它其实是一条{{笔直的线}}：半个世纪，从未停止翻倍。" },
+          { from: LINE + 98, to: DUR - 8, text: "所谓“突然”，是{{指数增长}}给人的错觉。" },
         ]}
       />
     </AbsoluteFill>

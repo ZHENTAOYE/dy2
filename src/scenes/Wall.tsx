@@ -13,6 +13,10 @@ const DRAW = cue("wall", "draw");
 const SLAM = cue("wall", "slam");
 const HEAT = cue("wall", "heat");
 const SPLIT = cue("wall", "split");
+const CARD = 76; // chapter card length; caption 1 follows it
+const REVEAL = DRAW - 20; // chart fades in over the 20 frames before the line starts drawing (behind the card's fade-out)
+/** Core-split step 0..4 (1/2/4/8/16 cores): one step per 20-frame tick from SPLIT, matching the pop and the soundtrack. */
+const splitStep = (f: number) => (f < SPLIT ? 0 : Math.min(4, Math.floor((f - SPLIT) / 20)));
 
 const L = 200;
 const R = 1180;
@@ -37,12 +41,12 @@ const clockAt = (year: number) => {
 };
 
 const penAt = (f: number) =>
-  f < SLAM ? lerp(Y0, 2004.6, ease.inQuad(prog(f, DRAW, SLAM))) : lerp(2004.6, Y1, ease.outCubic(prog(f, SLAM + 10, SLAM + 160)));
+  f < SLAM ? lerp(Y0, 2004.6, ease.inQuad(prog(f, DRAW, SLAM))) : lerp(2004.6, Y1, ease.outCubic(prog(f, SLAM + 10, SLAM + 140)));
 
 /** 0 = cool, 1 = white hot. */
 const heatAt = (f: number) => {
   const h = f < SLAM ? clamp((Math.log10(clockAt(penAt(f))) - 7.5) / 2.1) : 1;
-  const cool = ease.inOutCubic(prog(f, SPLIT + 20, SPLIT + 120));
+  const cool = ease.inOutCubic(prog(f, SPLIT + 20, SPLIT + 110));
   return h * (1 - cool) + (f > HEAT && f < SPLIT ? 0.15 * noise1(f * 0.3) : 0);
 };
 
@@ -59,7 +63,7 @@ const ChartCanvas: React.FC = () => (
       bg.addColorStop(1, "#020102");
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, w, h);
-      const a = ease.outCubic(prog(f, 70, 100));
+      const a = ease.outCubic(prog(f, REVEAL, DRAW));
       if (a <= 0) return;
       ctx.globalAlpha = a;
       // grid
@@ -92,8 +96,8 @@ const ChartCanvas: React.FC = () => (
         glow(ctx, hx, hy, 50, col, 0.9);
         glow(ctx, hx, hy, 14, C.white, 1);
         // the old trend that never happened
-        if (f > SLAM + 30) {
-          const ga = ease.outCubic(prog(f, SLAM + 30, SLAM + 70));
+        if (f > SLAM + 28) {
+          const ga = ease.outCubic(prog(f, SLAM + 28, SLAM + 64));
           ctx.globalCompositeOperation = "source-over";
           ctx.setLineDash([10, 10]);
           ctx.strokeStyle = withAlpha(C.red, 0.55 * ga);
@@ -165,8 +169,8 @@ const ChartCanvas: React.FC = () => (
 const ChipCanvas: React.FC = () => (
   <Canvas
     draw={(ctx, _w, _h, f) => {
-      if (f < 80) return;
-      const a = ease.outBack(prog(f, 80, 110));
+      if (f < DRAW - 20) return;
+      const a = ease.outBack(prog(f, DRAW - 20, DRAW + 10));
       const heat = heatAt(f);
       const cx = 1560;
       const cy = 400;
@@ -187,7 +191,7 @@ const ChipCanvas: React.FC = () => (
       ctx.fillRect(cx - S / 2 - 18, cy - S / 2 - 18, S + 36, S + 36);
       // cores
       const sp = prog(f, SPLIT, SPLIT + 100);
-      const k = Math.floor(sp * 4.999);
+      const k = splitStep(f);
       const cols = [1, 2, 2, 4, 4][k];
       const rows = [1, 1, 2, 2, 4][k];
       const pop = ease.outBack(clamp(((f - SPLIT) % 20) / 8));
@@ -228,12 +232,11 @@ const ChipCanvas: React.FC = () => (
 
 const ChipHud: React.FC = () => {
   const frame = useCurrentFrame();
-  const a = ease.outCubic(prog(frame, 90, 120));
+  const a = ease.outCubic(prog(frame, DRAW - 10, DRAW + 20));
   const heat = heatAt(frame);
   const year = Math.floor(penAt(frame));
   const ghz = clockAt(penAt(frame)) / 1e9;
-  const sp = prog(frame, SPLIT, SPLIT + 100);
-  const cores = [1, 2, 4, 8, 16][Math.floor(sp * 4.999)];
+  const cores = [1, 2, 4, 8, 16][splitStep(frame)];
   const temp = Math.round(lerp(35, 105, heat));
   const pd = prog(frame, HEAT - 10, HEAT + 20) * (1 - prog(frame, SPLIT + 30, SPLIT + 60));
   return (
@@ -291,7 +294,7 @@ const Stat: React.FC<{ k: string; v: string; col: string }> = ({ k, v, col }) =>
 
 const ChartLabels: React.FC = () => {
   const frame = useCurrentFrame();
-  const a = ease.outCubic(prog(frame, 70, 100));
+  const a = ease.outCubic(prog(frame, REVEAL, DRAW));
   const wl = ease.outCubic(prog(frame, SLAM + 4, SLAM + 20));
   return (
     <AbsoluteFill style={{ opacity: a }}>
@@ -339,14 +342,14 @@ export const Wall: React.FC = () => {
         <ChipHud />
       </AbsoluteFill>
       <Flash at={SLAM} dur={14} color={C.red} peak={0.55} />
-      <ChapterCard index={4} title="撞墙" en="THE POWER WALL" color={C.red} dur={80} />
+      <ChapterCard index={4} title="撞墙" en="THE POWER WALL" color={C.red} dur={CARD} />
       <Captions
         accent={"#ff6b5a"}
         items={[
-          { from: 84, to: 200, text: "但在2005年前后，{{一堵墙}}挡在了面前。" },
-          { from: 210, to: 330, text: "单核频率卡在了{{几GHz}}，再也提不上去。" },
-          { from: 335, to: 492, text: "再提频率就太烫了——照老路走，芯片会热得{{堪比核反应堆}}。" },
-          { from: 500, to: DUR - 12, text: "一个核心跑不快了，那就让{{很多核心一起跑}}。", accent: C.cyan },
+          { from: CARD + 2, to: SLAM - 4, text: "但在2005年前后，{{一堵墙}}挡在了面前。" },
+          { from: SLAM + 5, to: HEAT, text: "单核频率卡在了{{几GHz}}，再也提不上去。" },
+          { from: HEAT + 4, to: SPLIT - 6, text: "再提频率就太烫了——照老路走，芯片会热得{{堪比核反应堆}}。" },
+          { from: SPLIT, to: DUR - 12, text: "一个核心跑不快了，那就让{{很多核心一起跑}}。", accent: C.cyan },
         ]}
       />
     </AbsoluteFill>

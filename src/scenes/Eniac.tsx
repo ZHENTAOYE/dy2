@@ -11,7 +11,9 @@ import { cue, sceneDuration } from "../timeline";
 const DUR = sceneDuration("eniac");
 const BURNS = [cue("eniac", "burn1"), cue("eniac", "burn2"), cue("eniac", "burn3")];
 const DARK = cue("eniac", "dark");
-const EXTEND = 440;
+const EXTEND = BURNS[2] + 10; // the room starts growing right after the third burn-out
+const PULL = 212; // opening pull-back from one tube to the whole room
+const GROW = 132; // camera rise / pull-back while the room extends
 
 const HALF_W = 6; // room half width
 const BACK_Z0 = 30; // back wall depth before the room "extends"
@@ -30,8 +32,8 @@ const START = { x: 0.26, y: TOP_Y + 5 * SP, z: BACK_Z0 };
 const HALLS = [0, -13, 13, -26, 26];
 
 const camAt = (f: number) => {
-  const a = ease.inOutCubic(prog(f, 0, 270));
-  const b = ease.inOutCubic(prog(f, EXTEND, EXTEND + 170));
+  const a = ease.inOutCubic(prog(f, 0, PULL));
+  const b = ease.inOutCubic(prog(f, EXTEND, EXTEND + GROW));
   return camera({
     x: lerp(START.x, 0, a) + Math.sin(f * 0.01) * 0.25 * a,
     y: lerp(START.y, 0.1, a) + lerp(0, -15, b),
@@ -42,17 +44,17 @@ const camAt = (f: number) => {
   });
 };
 
-const backZ = (f: number) => BACK_Z0 + 34 * ease.inOutCubic(prog(f, EXTEND, EXTEND + 160));
+const backZ = (f: number) => BACK_Z0 + 34 * ease.inOutCubic(prog(f, EXTEND, EXTEND + GROW - 8));
 
 /** Tube brightness incl. ignition, computation waves, burn-outs and the final power-down. */
 const tubeLevel = (f: number, id: number, X: number, Y: number, z: number, hall: number, isBurn: number) => {
   let ign: number;
   if (hall === 0) {
     const d = Math.hypot(X - START.x, Y - START.y, z - START.z);
-    ign = clamp((f + 6 - d * 4 - hash(id) * 10) / 10);
-    if (z > BACK_Z0 + 0.5) ign = clamp((f - EXTEND - (z - BACK_Z0) * 3 - hash(id) * 10) / 10);
+    ign = clamp((f + 5 - d * 3.2 - hash(id) * 8) / 8);
+    if (z > BACK_Z0 + 0.5) ign = clamp((f - EXTEND - (z - BACK_Z0) * 2.35 - hash(id) * 8) / 8);
   } else {
-    ign = clamp((f - EXTEND - 10 - Math.abs(hall) * 1.6 - z * 1.4 - hash(id) * 14) / 12);
+    ign = clamp((f - EXTEND - 8 - Math.abs(hall) * 1.25 - z * 1.1 - hash(id) * 11) / 10);
   }
   const comp = 0.62 + 0.25 * noise1(f * 0.22 + id * 0.37) + 0.25 * Math.max(0, Math.sin(z * 0.6 - f * 0.18 + hall));
   let v = ign * comp;
@@ -204,7 +206,7 @@ const BurnMarkers: React.FC = () => {
         if (!p) return null;
         const a = clamp(t / 4) * (1 - prog(frame, EXTEND - 15, EXTEND + 10));
         const r = 26 + 40 * Math.exp(-t / 8);
-        const blink = Math.floor(t / 6) % 2 ? 1 : 0.45;
+        const blink = Math.floor(t / 6) % 2 ? 0.45 : 1; // open on the bright phase so each label reads at once
         const latest = BURNS.filter((b2) => frame >= b2).length - 1 === k;
         const ly = [-90, 80, -150][k];
         return (
@@ -231,12 +233,12 @@ const BurnMarkers: React.FC = () => {
 const Stats: React.FC = () => {
   const frame = useCurrentFrame();
   const rows: [string, number, string, number][] = [
-    ["真空管", 17468, "根", 40],
-    ["重量", 30, "吨", 110],
-    ["功耗", 150, "千瓦", 170],
-    ["占地", 167, "平方米", 230],
+    ["真空管", 17468, "根", 32],
+    ["重量", 30, "吨", 88],
+    ["功耗", 150, "千瓦", 136],
+    ["占地", 167, "平方米", 182],
   ];
-  const a = 1 - prog(frame, EXTEND + 30, EXTEND + 70);
+  const a = 1 - prog(frame, EXTEND + 24, EXTEND + 55);
   return (
     <div style={{ position: "absolute", right: 96, top: 90, width: 420, opacity: a }}>
       {rows.map(([k, v, u, t0]) => {
@@ -280,11 +282,11 @@ export const Eniac: React.FC = () => {
       <Captions
         accent={C.amber}
         items={[
-          { from: 24, to: 150, text: "ENIAC 里装了{{17468根}}真空管，" },
-          { from: 153, to: 290, text: "耗电{{150千瓦}}，相当于上百户人家同时用电。" },
-          { from: 295, to: 435, text: "灯丝会烧断，{{几乎每天都有管子坏掉}}。", accent: "#ff6b5a" },
-          { from: 440, to: 590, text: "想要更强？只能塞进{{更多的管子、更大的房间}}——" },
-          { from: 594, to: DUR - 10, text: "这条路，{{走到头了}}。" },
+          { from: 22, to: 112, text: "ENIAC 里装了{{17468根}}真空管，" },
+          { from: 116, to: 223, text: "耗电{{150千瓦}}，相当于上百户人家同时用电。" },
+          { from: BURNS[0] - 27, to: BURNS[2] + 5, text: "灯丝会烧断，{{几乎每天都有管子坏掉}}。", accent: "#ff6b5a" },
+          { from: EXTEND, to: DARK - 24, text: "想要更强？只能塞进{{更多的管子、更大的房间}}——" },
+          { from: DARK - 20, to: DUR - 10, text: "这条路，{{走到头了}}。" },
         ]}
       />
     </AbsoluteFill>

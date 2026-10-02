@@ -132,6 +132,7 @@ CUE_SOUNDS = {
         "race": [S("tick", freq=1400, dec=0.03, gain=0.42), S("gen_cpu_rows", gain=0.13)],
         "burst": [S("boom", size=0.85, gain=0.88), S("whoosh", dur=1.4, gain=0.5)],
         "matrix": [S("gen_matrix", gain=0.34)],
+        "one": [], "all": [], "zoom": [],  # matrix beats: voiced by gen_matrix above
     },
     # -- Chapter 6 . neural networks -------------------------------------------------------------
     "neural": {
@@ -245,7 +246,7 @@ SYNC_WALL_SPLIT = (20, 5)                                          # Wall.tsx: a
 SYNC_GPU_CPU = (8, 4)                                              # Gpu.tsx: 8 CPU cores pop 4 frames apart
 SYNC_GPU_GRID = (96, 58, 1.6, 0.5, 6)                              # Gpu.tsx GPU grid: cols, rows, y-squash, frames/unit, offset
 SYNC_GPU_CPU_ROWS = 0.22                                           # Gpu.tsx CPU_ROWS (rows per frame)
-SYNC_GPU_MATRIX = dict(one=40, one_len=50, n=8, all=120, zoom=175, zoom_len=110)  # Gpu.tsx ONE/ALL/ZOOM from "matrix"
+SYNC_GPU_MATRIX = dict(one_len=40, n=8, zoom_len=88)                # Gpu.tsx ONE_LEN / N / ZOOM_LEN (beats: gpu cues one/all/zoom)
 SYNC_ALEXNET_BARS = (6, 8)                                         # only if AlexNet has no ticks.bar: 6 bars, 8 frames apart
 
 # ================================================================================================
@@ -1528,15 +1529,14 @@ def gen_cpu_rows(sc, cue, t, gain, p):
 def gen_matrix(sc, cue, t, gain, p):
     """GPU matrix: soft ticks for the first cell's multiply-adds, a burst when every cell fires, a whoosh on the zoom-out."""
     g = SYNC_GPU_MATRIX
-    f0 = sc.cues[cue]
     evs = []
     for k in range(g["n"]):
-        tt = (sc.start + f0 + g["one"] + k * g["one_len"] / g["n"]) / sc.fps
+        tt = (sc.start + sc.cues["one"] + k * g["one_len"] / g["n"]) / sc.fps
         evs.append(Ev(tt, tt, f"{sc.id}.{cue}#mac{k}", "tick", gain, params=dict(freq=1000 * 2 ** (k / 8), dec=0.03)))
-    ta = (sc.start + f0 + g["all"]) / sc.fps
+    ta = (sc.start + sc.cues["all"]) / sc.fps
     evs.append(Ev(ta, ta, f"{sc.id}.{cue}#all", "shimmer", gain * 1.3))
     evs.append(Ev(ta, ta, f"{sc.id}.{cue}#all", "hit", gain * 1.4, params=dict(size=0.5)))
-    tz = (sc.start + f0 + g["zoom"]) / sc.fps
+    tz = (sc.start + sc.cues["zoom"]) / sc.fps
     evs.append(Ev(tz, tz, f"{sc.id}.{cue}#zoom", "whoosh", gain * 1.4, params=dict(dur=g["zoom_len"] / sc.fps, peak=0.6, lo=150, hi=2500)))
     return evs
 

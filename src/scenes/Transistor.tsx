@@ -12,14 +12,17 @@ const DUR = sceneDuration("transistor");
 const APPEAR = cue("transistor", "appear");
 const GATE = cue("transistor", "gate");
 const SHRINK = cue("transistor", "shrink");
-const COMPARE = 470;
+/** Device slides right and the vacuum-tube comparison fades in (with its caption). */
+const COMPARE = GATE + 116;
+/** Device has collapsed to a point; from here the dot multiplies into a grid. */
+const COLLAPSE = SHRINK + 54;
 
 const gateOn = (f: number) => {
   if (f < GATE) return 0;
   const t = f - GATE;
-  // on, then a few clean toggles while the caption explains it
+  // on, then a few clean toggles while the caption explains it (last toggle at GATE+100, then steady)
   const pattern = [1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1];
-  return pattern[Math.min(pattern.length - 1, Math.floor(t / 12))];
+  return pattern[Math.min(pattern.length - 1, Math.floor(t / 10))];
 };
 
 // Diamond-cubic silicon lattice (the crystal transistors are carved from).
@@ -68,7 +71,7 @@ const Lattice: React.FC = () => (
         const z2 = y * Math.sin(b) + z1 * Math.cos(b);
         return project(cam, x1 * 1.3, y1 * 1.3, z2 * 1.3);
       };
-      const vis = clamp(f / 40) * (1 - 0.65 * ease.inOutCubic(prog(f, APPEAR - 20, APPEAR + 30))) * (1 - prog(f, SHRINK, SHRINK + 40));
+      const vis = clamp(f / 40) * (1 - 0.65 * ease.inOutCubic(prog(f, APPEAR - 16, APPEAR + 26))) * (1 - prog(f, SHRINK, SHRINK + 32));
       const P = LATTICE.pts.map(rot);
       ctx.lineWidth = 1.5;
       for (const [i, j] of LATTICE.bonds) {
@@ -215,13 +218,13 @@ const drawMosfet = (ctx: CanvasRenderingContext2D, f: number, appear: number) =>
 const Device: React.FC = () => (
   <Canvas
     draw={(ctx, w, h, f) => {
-      const appear = clamp((f - APPEAR) / 70);
+      const appear = clamp((f - APPEAR) / 56);
       if (appear <= 0) return;
       // layout phases: centred → shifted right for comparison → collapse to a point
-      const cmp = ease.inOutCubic(prog(f, COMPARE, COMPARE + 40));
-      const shr = ease.inExpo(prog(f, SHRINK, SHRINK + 70));
+      const cmp = ease.inOutCubic(prog(f, COMPARE, COMPARE + 34));
+      const shr = ease.inExpo(prog(f, SHRINK, COLLAPSE));
       const s = lerp(1, 0.62, cmp) * (1 - shr * 0.995);
-      const x = lerp(w / 2 - 50, 1300, cmp) + (w / 2 - lerp(w / 2 - 50, 1300, cmp)) * ease.inOutCubic(prog(f, SHRINK - 30, SHRINK + 10));
+      const x = lerp(w / 2 - 50, 1300, cmp) + (w / 2 - lerp(w / 2 - 50, 1300, cmp)) * ease.inOutCubic(prog(f, SHRINK - 26, SHRINK + 8));
       const y = lerp(560, 540, cmp);
       ctx.save();
       ctx.translate(x, y);
@@ -232,9 +235,10 @@ const Device: React.FC = () => (
         ctx.globalCompositeOperation = "lighter";
         glow(ctx, w / 2, 540, 30 + 200 * shr, C.cyan, 0.9 * shr, 0.1);
         // the dot multiplies into a grid – the seed of the integrated circuit
-        const split = prog(f, SHRINK + 70, DUR);
+        const split = prog(f, COLLAPSE, DUR);
         if (split > 0) {
-          const n = Math.pow(2, Math.floor(split * 9));
+          // 256 reached ~7 frames before the cut so the finished grid registers
+          const n = Math.pow(2, Math.min(8, Math.floor(split * 9.4)));
           const cols = Math.ceil(Math.sqrt(n));
           const rows = Math.ceil(n / cols);
           const sp = lerp(160, 34, split);
@@ -251,7 +255,7 @@ const Device: React.FC = () => (
 
 const Compare: React.FC = () => {
   const frame = useCurrentFrame();
-  const a = ease.outCubic(prog(frame, COMPARE + 10, COMPARE + 40)) * (1 - prog(frame, SHRINK - 20, SHRINK + 10));
+  const a = ease.outCubic(prog(frame, COMPARE + 8, COMPARE + 34)) * (1 - prog(frame, SHRINK - 18, SHRINK + 8));
   if (a <= 0) return null;
   const tags = (items: string[], col: string) => (
     <div style={{ display: "flex", gap: 14, justifyContent: "center", marginTop: 26 }}>
@@ -290,23 +294,25 @@ const Compare: React.FC = () => {
 
 export const Transistor: React.FC = () => {
   const frame = useCurrentFrame();
-  const capsHidden = frame > COMPARE + 20 && frame < SHRINK - 10;
+  // band off while the comparison caption sits low under the tags (back on once it has ended)
+  // starts at COMPARE-4 (caption 3 has ended, band already at 0) so the band never pops on/off under caption 4
+  const capsHidden = frame >= COMPARE - 4 && frame < SHRINK - 4;
   return (
     <AbsoluteFill style={{ background: C.bg }}>
       <Lattice />
       <Device />
       <Compare />
-      <YearStamp year="1947" label="美国 · 贝尔实验室" from={80} to={COMPARE} color={C.cyan} />
-      <ChapterCard index={2} title="硅的魔法" en="THE MAGIC OF SILICON" color={C.cyan} dur={80} />
+      <YearStamp year="1947" label="美国 · 贝尔实验室" from={70} to={COMPARE} color={C.cyan} />
+      <ChapterCard index={2} title="硅的魔法" en="THE MAGIC OF SILICON" color={C.cyan} dur={75} />
       <Captions
         accent={C.cyan}
         band={!capsHidden}
         items={[
-          { from: 86, to: 200, text: "1947年，贝尔实验室发明了{{晶体管}}。" },
-          { from: 203, to: 325, text: "它同样是开关——但{{没有灯丝，没有真空}}，只是一小块硅。" },
-          { from: 330, to: 462, text: "给栅极加上电压，{{电子通道}}就会打开，电流流过。" },
-          { from: 466, to: 600, text: "它{{更小、更省电、更可靠}}，开关速度也快得多。", y: 1000 },
-          { from: 604, to: DUR - 8, text: "更重要的是——它可以{{越做越小}}。" },
+          { from: 74, to: 163, text: "1947年，贝尔实验室发明了{{晶体管}}。" },
+          { from: 167, to: GATE - 4, text: "它同样是开关——但{{没有灯丝，没有真空}}，只是一小块硅。" },
+          { from: GATE, to: COMPARE - 4, text: "给栅极加上电压，{{电子通道}}就会打开，电流流过。" },
+          { from: COMPARE, to: SHRINK - 4, text: "它{{更小、更省电、更可靠}}，开关速度也快得多。", y: 1000 },
+          { from: SHRINK, to: DUR - 8, text: "更重要的是——它可以{{越做越小}}。" },
         ]}
       />
     </AbsoluteFill>

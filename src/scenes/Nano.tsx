@@ -14,15 +14,14 @@ const NM = 1e-9;
 
 // [frame, field-of-view width in metres] — log-interpolated with smoothstep.
 const KEYS: [number, number][] = [
-  [0, 2.6e-4],
-  [130, 1.8e-4],
-  [190, 3.0e-5],
-  [290, 2.3e-5],
-  [330, 4.6e-6],
-  [380, 3.4e-6],
-  [430, 3.6e-7],
+  [0, 2.6e-4], // hair
+  [74, 1.8e-4],
+  [126, 3.0e-5], // 1971 transistor + red blood cell
+  [198, 2.3e-5],
+  [232, 4.6e-6], // bacterium: the slow start of the next ease is its dwell (no caption)
+  [290, 3.6e-7], // modern transistors + virus
   [ATOMS - 10, 3.0e-7],
-  [ATOMS + 50, 3.0e-8],
+  [ATOMS + 50, 3.0e-8], // silicon atoms in one fin
   [DUR, 2.4e-8],
 ];
 
@@ -48,6 +47,17 @@ const label = (ctx: CanvasRenderingContext2D, x: number, y: number, t: string, s
   if (a <= 0.02) return;
   ctx.globalAlpha = a;
   ctx.textAlign = "center";
+  // soft dark backing so the label stays legible over gates, fins and glows
+  ctx.font = `900 34px ${FONT_CN}`;
+  const tw = ctx.measureText(t).width;
+  ctx.font = `800 22px ${FONT_MONO}`;
+  const bw = Math.max(tw, ctx.measureText(sub).width) + 44;
+  ctx.fillStyle = "rgba(2,5,10,0.6)";
+  ctx.shadowColor = "rgba(2,5,10,0.9)";
+  ctx.shadowBlur = 18;
+  ctx.beginPath();
+  ctx.roundRect(x - bw / 2, y - 40, bw, 82, 16);
+  ctx.fill();
   ctx.font = `900 34px ${FONT_CN}`;
   ctx.fillStyle = "#fff";
   ctx.shadowColor = "#000";
@@ -126,7 +136,9 @@ const Scene: React.FC = () => (
         ctx.fillStyle = "#1a1a24";
         for (const dx of [-3.3, 3.3]) for (const dy of [-1.5, 1.5]) ctx.fillRect(X(ox + (dx - 0.5) * UM), Y((dy - 0.5) * UM), s, s);
         ctx.restore();
-        label(ctx, X(ox), Math.max(84, Y(-6.4 * UM) - 34), "1971年的晶体管", "≈ 10 µm", C.green, tv);
+        // labels wait until the two objects are far enough apart that their labels no longer collide
+        const tl = tv * clamp(((10 * UM) / view - 0.07) / 0.03);
+        label(ctx, X(ox), Math.max(84, Y(-6.4 * UM) - 34), "1971年的晶体管", "≈ 10 µm", C.green, tl);
         // red blood cell
         const rx = X(7.5 * UM);
         const ry = Y(0);
@@ -143,7 +155,7 @@ const Scene: React.FC = () => (
         ctx.arc(rx, ry, rr, 0, TAU);
         ctx.fill();
         ctx.restore();
-        label(ctx, rx, Math.max(84, ry - rr - 46), "红细胞", "≈ 7.5 µm", "#ff6b6b", tv);
+        label(ctx, rx, Math.max(84, ry - rr - 46), "红细胞", "≈ 7.5 µm", "#ff6b6b", tl);
       }
 
       // 3. bacterium (2 µm rod)
@@ -211,10 +223,11 @@ const Scene: React.FC = () => (
           }
         ctx.globalCompositeOperation = "source-over";
         ctx.restore();
-        const lv = mv * clamp(1.2 - (200 * NM) / view) * clamp(((200 * NM) / view - 0.2) / 0.12);
-        label(ctx, X(-70 * NM), 120, "今天的晶体管", "栅极间距 ≈ 48 nm", C.cyan, lv);
+        // full opacity through the hold; fades out as the zoom into the fin starts (200 nm/view 0.7 → 1.2)
+        const lv = mv * clamp((1.2 - (200 * NM) / view) / 0.5) * clamp(((200 * NM) / view - 0.2) / 0.12);
+        label(ctx, X(-70 * NM), 106, "今天的晶体管", "栅极间距 ≈ 48 nm", C.cyan, lv);
         // virus
-        const vx = X(110 * NM);
+        const vx = X(102 * NM);
         const vy = Y(10 * NM);
         const vr = 50 * NM * ppm;
         ctx.save();
@@ -241,7 +254,7 @@ const Scene: React.FC = () => (
         ctx.arc(vx, vy, vr, 0, TAU);
         ctx.fill();
         ctx.restore();
-        label(ctx, vx, 120, "病毒", "≈ 100 nm", "#ff7a9a", lv);
+        label(ctx, vx, 106, "病毒", "≈ 100 nm", "#ff7a9a", lv);
       }
 
       // 5. silicon atoms inside one fin
@@ -311,13 +324,28 @@ const ScaleBar: React.FC = () => {
   const px = best * ppm;
   const lab = best >= 1e-6 ? `${Math.round(best / 1e-6)} 微米` : `${Math.round(best / 1e-9)} 纳米`;
   const mag = (2.6e-4 / view);
+  // the virus sits behind the readout only while today's transistors are on screen (200 nm/view ≈ 0.36–1.2)
+  const vs = 200e-9 / view;
+  const backdrop = clamp((vs - 0.3) / 0.15) * clamp((1.3 - vs) / 0.3);
   return (
     <>
       <div style={{ position: "absolute", left: 110, bottom: 220, textAlign: "left" }}>
         <div style={{ width: px, height: 12, borderLeft: "3px solid #fff", borderRight: "3px solid #fff", borderBottom: "3px solid #fff" }} />
         <div style={{ fontFamily: FONT_CN, fontWeight: 700, fontSize: 30, color: "#fff", marginTop: 8, textShadow: "0 0 8px #000, 0 0 18px #000" }}>{lab}</div>
       </div>
-      <div style={{ position: "absolute", right: 110, bottom: 210, textAlign: "right", fontFamily: FONT_MONO, textShadow: "0 0 10px #000, 0 0 24px #000" }}>
+      <div
+        style={{
+          position: "absolute",
+          right: 40,
+          bottom: 170,
+          padding: "40px 70px 40px 110px",
+          // soft dark backdrop: keeps the readout legible where the virus passes behind it
+          background: `radial-gradient(closest-side, rgba(2,5,10,${0.7 * backdrop}), rgba(2,5,10,${0.45 * backdrop}) 55%, rgba(2,5,10,0))`,
+          textAlign: "right",
+          fontFamily: FONT_MONO,
+          textShadow: "0 0 10px #000, 0 0 24px #000",
+        }}
+      >
         <div style={{ fontSize: 22, letterSpacing: "0.3em", color: C.ice }}>MAGNIFICATION</div>
         <div style={{ fontSize: 56, fontWeight: 800, color: "#fff", textShadow: `0 0 18px ${C.cyan}, 0 0 12px #000` }}>×{Math.round(mag).toLocaleString("en-US")}</div>
       </div>
@@ -336,11 +364,11 @@ export const Nano: React.FC = () => {
       <Captions
         accent={C.cyan}
         items={[
-          { from: 10, to: 178, text: "晶体管能做多小？从一根{{头发丝}}开始放大——" },
-          { from: 184, to: 322, text: "1971年的晶体管约{{10微米}}，和红细胞差不多大。" },
-          { from: 436, to: 520, text: "今天的晶体管只有{{几十纳米}}，比病毒还小。" },
-          { from: 524, to: 600, text: "一根头发丝的宽度，能并排放下{{上千个}}。" },
-          { from: 606, to: DUR - 6, text: "最窄处，只有{{几十个原子}}宽。" },
+          { from: 10, to: 116, text: "晶体管能做多小？从一根{{头发丝}}开始放大——" },
+          { from: 120, to: 230, text: "1971年的晶体管约{{10微米}}，和红细胞差不多大。" },
+          { from: 282, to: 382, text: "今天的晶体管只有{{几十纳米}}，比病毒还小。" },
+          { from: 386, to: ATOMS + 42, text: "一根头发丝的宽度，能并排放下{{上千个}}。" },
+          { from: ATOMS + 46, to: DUR - 6, text: "最窄处，只有{{几十个原子}}宽。" },
         ]}
       />
     </AbsoluteFill>

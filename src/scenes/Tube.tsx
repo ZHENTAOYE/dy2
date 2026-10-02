@@ -12,7 +12,8 @@ const HEAT = cue("tube", "heat");
 const ON = cue("tube", "on");
 const OFF = cue("tube", "off");
 const TOGGLE = cue("tube", "toggle");
-const DRAW0 = 70;
+const CARD = 75; // chapter card length
+const DRAW0 = CARD - 10; // tube starts drawing while the card fades out
 
 const CX = 700;
 const TOP = 150;
@@ -240,7 +241,7 @@ const Adder: React.FC = () => {
   const frame = useCurrentFrame();
   const t = frame - TOGGLE;
   if (t < 0) return null;
-  const a = ease.outCubic(clamp(t / 20)) * (1 - prog(frame, DUR - 40, DUR - 15));
+  const a = ease.outCubic(clamp(t / 20)) * (1 - prog(frame, DUR - 34, DUR - 12));
   const row = (bits: string, label: string, reveal: number, col: string, op = " ") => (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 20 }}>
       <span style={{ color: "rgba(255,255,255,0.5)", width: 50 }}>{op}</span>
@@ -263,14 +264,14 @@ const Adder: React.FC = () => {
       <span style={{ fontFamily: FONT_CN, fontSize: 40, color: col, width: 110, textAlign: "left", opacity: reveal >= 4 ? 1 : 0 }}>{label}</span>
     </div>
   );
-  const r1 = Math.floor(clamp(t / 30) * 4.99);
-  const r2 = Math.floor(clamp((t - 24) / 30) * 4.99);
-  const r3 = Math.floor(clamp((t - 60) / 36) * 4.99);
+  const r1 = Math.floor(clamp(t / 24) * 4.99);
+  const r2 = Math.floor(clamp((t - 18) / 24) * 4.99);
+  const r3 = Math.floor(clamp((t - 48) / 28) * 4.99);
   return (
     <div style={{ position: "absolute", left: 1060, top: 230, opacity: a, fontFamily: FONT_MONO, fontWeight: 800, fontSize: 96, lineHeight: 1.25 }}>
       {row("0101", "= 5", r1, C.amber)}
       {row("0011", "= 3", r2, C.amber, "+")}
-      <div style={{ height: 4, margin: "10px 0 10px 70px", background: C.amber, boxShadow: `0 0 16px ${C.amber}`, width: `${88 * ease.outCubic(clamp((t - 50) / 14))}%` }} />
+      <div style={{ height: 4, margin: "10px 0 10px 70px", background: C.amber, boxShadow: `0 0 16px ${C.amber}`, width: `${88 * ease.outCubic(clamp((t - 40) / 12))}%` }} />
       {row("1000", "= 8", r3, C.gold)}
     </div>
   );
@@ -278,7 +279,7 @@ const Adder: React.FC = () => {
 
 export const Tube: React.FC = () => {
   const frame = useCurrentFrame();
-  const z = 1 + 0.06 * prog(frame, 60, DUR);
+  const z = 1 + 0.06 * prog(frame, DRAW0 - 10, DUR);
   const out = ease.inCubic(prog(frame, DUR - 40, DUR));
   return (
     <AbsoluteFill style={{ background: C.bg }}>
@@ -292,21 +293,21 @@ export const Tube: React.FC = () => {
       >
         <TubeSvg frame={frame} />
         <Electrons />
-        <Callout x={CX} y={360} dx={-280} dy={-80} text="阴极 · 灯丝加热" sub="CATHODE" from={HEAT + 20} to={OFF + 40} color={C.amber} />
-        <Callout x={CX - 42} y={560} dx={-250} dy={90} text="栅极 · 控制开关" sub="GRID" from={HEAT + 40} to={TOGGLE} color={frame >= OFF ? C.red : "#c9d3de"} />
-        <Callout x={CX + 85} y={420} dx={200} dy={-150} text="阳极 · 收集电子" sub="PLATE" from={HEAT + 60} to={ON - 30} color={C.ice} />
+        <Callout x={CX} y={360} dx={-280} dy={-80} text="阴极 · 灯丝加热" sub="CATHODE" from={HEAT + 16} to={OFF + 40} color={C.amber} />
+        <Callout x={CX - 42} y={560} dx={-250} dy={90} text="栅极 · 控制开关" sub="GRID" from={HEAT + 30} to={TOGGLE} color={frame >= OFF ? C.red : "#c9d3de"} />
+        <Callout x={CX + 85} y={420} dx={200} dy={-150} text="阳极 · 收集电子" sub="PLATE" from={HEAT + 44} to={ON - 14} color={C.ice} />
       </AbsoluteFill>
       <Readout />
       <Adder />
-      <ChapterCard index={1} title="会发光的开关" en="THE GLOWING SWITCH" dur={78} />
+      <ChapterCard index={1} title="会发光的开关" en="THE GLOWING SWITCH" dur={CARD} />
       <Captions
         accent={C.amber}
         items={[
-          { from: 92, to: 205, text: "计算机的本质，是{{一大堆开关}}。" },
-          { from: 208, to: 300, text: "开，代表{{1}}；关，代表{{0}}。" },
-          { from: 303, to: 445, text: "真空管就是当年的开关：灯丝加热，{{电子飞过真空}}，电流接通。" },
-          { from: 450, to: 556, text: "给栅极加上负电压，电子被挡回去——{{开关就断了}}。" },
-          { from: 562, to: DUR - 20, text: "成千上万个开关组合起来，就能{{做加法、做乘法}}……" },
+          { from: CARD - 1, to: ON - 81, text: "计算机的本质，是{{一大堆开关}}。" },
+          { from: ON - 77, to: ON - 1, text: "开，代表{{1}}；关，代表{{0}}。" },
+          { from: ON + 3, to: OFF - 4, text: "真空管就是当年的开关：灯丝加热，{{电子飞过真空}}，电流接通。" },
+          { from: OFF, to: TOGGLE - 2, text: "给栅极加上负电压，电子被挡回去——{{开关就断了}}。" },
+          { from: TOGGLE + 2, to: DUR - 11, text: "成千上万个开关组合起来，就能{{做加法、做乘法}}……" },
         ]}
       />
     </AbsoluteFill>

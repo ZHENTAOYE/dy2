@@ -6,10 +6,11 @@ import { clamp, ease, fmtCN, hash, hash2, noise1, prog, shake, TAU } from "../li
 import { Captions } from "../components/Caption";
 import { YearStamp, Flash } from "../components/Hud";
 import { Glitch } from "../components/Glitch";
-import { cue } from "../timeline";
+import { cue, sceneDuration } from "../timeline";
 
 const IGNITE = cue("coldopen", "ignite");
 const CUT = cue("coldopen", "cut");
+const END = sceneDuration("coldopen");
 
 /** Filament brightness: stutters on like an old bulb, then breathes. */
 const filamentHeat = (f: number, start: number) => {
@@ -73,19 +74,21 @@ const EniacField: React.FC = () => {
         const cx = w / 2;
         const cy = h / 2 - 40;
         // camera pulls back from one filament to a whole wall of them
-        const z = prog(f, 50, CUT - 10);
+        const z = prog(f, IGNITE + 30, CUT - 10);
         const s = Math.exp(Math.log(7) * (1 - ease.inOutCubic(z)));
         const spacing = 92;
         const cols = 26;
         const rows = 16;
-        const pulse = f > 290 ? 0.5 + 0.5 * Math.sin((f - 290) * 0.5) : 0;
+        const PULSE = CUT - 50; // the wall throbs in anticipation of the cut
+        const pulse = f > PULSE ? 0.5 + 0.5 * Math.sin((f - PULSE) * 0.5) : 0;
         for (let j = -rows; j <= rows; j++) {
           for (let i = -cols; i <= cols; i++) {
             const x = cx + i * spacing * s;
             const y = cy + j * spacing * 1.1 * s;
             if (x < -80 || x > w + 80 || y < -80 || y > h + 80) continue;
             const d = Math.hypot(i, j);
-            const start = i === 0 && j === 0 ? IGNITE : 70 + d * 9 + hash2(i, j) * 30;
+            // the rest of the wall catches fire outward from the first filament
+            const start = i === 0 && j === 0 ? IGNITE : IGNITE + 47 + d * 8 + hash2(i, j) * 27;
             const heat = filamentHeat(f, start) * (0.75 + 0.25 * hash2(i + 9, j));
             drawFilament(ctx, x, y, s * 0.9, heat * (1 + pulse * 0.25), i === 0 && j === 0 ? 1 : 0.85);
           }
@@ -191,14 +194,15 @@ export const ColdOpen: React.FC = () => {
       <AbsoluteFill style={{ transform: `translate(${sh.x}px, ${sh.y}px)` }}>
         {frame < CUT ? <EniacField /> : <Phone />}
       </AbsoluteFill>
-      {frame < CUT ? <YearStamp year="1946" label="美国 · 宾夕法尼亚大学" from={36} to={CUT} /> : null}
+      {frame < CUT ? <YearStamp year="1946" label="美国 · 宾夕法尼亚大学" from={IGNITE + 10} to={CUT} /> : null}
       <Captions
         accent={frame < CUT ? C.amber : C.cyan}
         items={[
-          { from: 40, to: 150, text: "1946年，第一台通用电子计算机 {{ENIAC}} 诞生。" },
-          { from: 152, to: 250, text: "它重达{{30吨}}，塞满了一整个房间，" },
-          { from: 252, to: CUT, text: "每秒，却只能做{{5000次}}加法。" },
-          { from: CUT + 30, to: 476, text: "今天，你口袋里的手机比它快了{{几十亿倍}}。", accent: C.cyan },
+          // the three ENIAC lines are packed back-to-back (4-frame gaps) so the last one lands on the cut
+          { from: IGNITE + 12, to: CUT - 171, text: "1946年，第一台通用电子计算机 {{ENIAC}} 诞生。" },
+          { from: CUT - 167, to: CUT - 82, text: "它重达{{30吨}}，塞满了一整个房间，" },
+          { from: CUT - 78, to: CUT, text: "每秒，却只能做{{5000次}}加法。" },
+          { from: CUT + 17, to: END - 2, text: "今天，你口袋里的手机比它快了{{几十亿倍}}。", accent: C.cyan },
         ]}
       />
       <Glitch at={CUT} before={5} after={12} />

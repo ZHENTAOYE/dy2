@@ -6,8 +6,19 @@ import { clamp, ease, hash, prog, shake, TAU } from "../lib/math";
 import { Flash } from "../components/Hud";
 import { cue, sceneDuration } from "../timeline";
 
+const RISER = cue("title", "riser");
 const SLAM = cue("title", "slam");
 const DUR = sceneDuration("title");
+// post-slam reveal, relative to SLAM: subtitle, then the timeline bar with its milestones popping in
+const SUB_IN = 20;
+const SUB_END = 44;
+// the bar starts one step before milestone 0 and runs 8 steps, so its eased midpoint (50 %) lands on milestone 3
+const LINE_IN = 35;
+const LINE_END = 75;
+const MS_IN = 40;
+const MS_STEP = 5;
+const MS_DUR = 16;
+const FADE_OUT = 20;
 
 const MILESTONES = [
   ["1946", "真空管", C.amber],
@@ -28,7 +39,7 @@ const Burst: React.FC = () => (
       // pre-slam: particles sucked toward the centre
       ctx.globalCompositeOperation = "lighter";
       if (t < 0) {
-        const k = clamp((f - 10) / (SLAM - 10));
+        const k = clamp((f - RISER) / (SLAM - RISER));
         for (let i = 0; i < 500; i++) {
           const a = hash(i * 1.7) * TAU;
           const r0 = 300 + hash(i * 3.1) * 1100;
@@ -105,8 +116,8 @@ const TitleText: React.FC = () => {
   const e = ease.outExpo(clamp(t / 24));
   const sc = 1.6 - 0.6 * e + 0.03 * prog(frame, SLAM, DUR);
   const ab = 26 * Math.exp(-t / 8);
-  const sub = ease.outCubic(prog(frame, SLAM + 22, SLAM + 46));
-  const out = prog(frame, DUR - 20, DUR);
+  const sub = ease.outCubic(prog(frame, SLAM + SUB_IN, SLAM + SUB_END));
+  const out = prog(frame, DUR - FADE_OUT, DUR);
   const base: React.CSSProperties = {
     position: "absolute",
     inset: 0,
@@ -176,14 +187,15 @@ const TitleText: React.FC = () => {
             left: 0,
             top: 20,
             height: 2,
-            width: `${100 * ease.inOutCubic(prog(frame, SLAM + 40, SLAM + 90))}%`,
+            width: `${100 * ease.inOutCubic(prog(frame, SLAM + LINE_IN, SLAM + LINE_END))}%`,
             background: `linear-gradient(90deg, ${C.amber}, ${C.cyan} 40%, ${C.violet} 75%, ${C.magenta})`,
             boxShadow: `0 0 12px ${C.cyan}`,
           }}
         />
         {MILESTONES.map(([y, label, col], i) => {
           const x = (i / (MILESTONES.length - 1)) * 100;
-          const a = ease.outBack(prog(frame, SLAM + 44 + i * 7, SLAM + 60 + i * 7));
+          const a0 = SLAM + MS_IN + i * MS_STEP;
+          const a = ease.outBack(prog(frame, a0, a0 + MS_DUR));
           return (
             <div key={y} style={{ position: "absolute", left: `${x}%`, top: 0, transform: `translateX(-50%)`, textAlign: "center", opacity: clamp(a) }}>
               <div style={{ width: 14, height: 14, margin: "13px auto 0", borderRadius: 7, background: col, boxShadow: `0 0 14px ${col}`, transform: `scale(${a})` }} />
@@ -200,7 +212,7 @@ const TitleText: React.FC = () => {
 export const Title: React.FC = () => {
   const frame = useCurrentFrame();
   const sh = shake(frame, SLAM, 34, 26);
-  const q = Math.min(ease.outCubic(prog(frame, 4, 24)), 1 - prog(frame, SLAM - 10, SLAM - 1));
+  const q = Math.min(ease.outCubic(prog(frame, 0, 18)), 1 - prog(frame, SLAM - 10, SLAM - 1));
   const qs = 1 + 0.08 * prog(frame, 0, SLAM);
   return (
     <AbsoluteFill style={{ background: C.bg }}>

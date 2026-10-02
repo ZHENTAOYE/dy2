@@ -2,7 +2,7 @@ import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { Canvas, glow, mix, withAlpha } from "../lib/canvas";
 import { C, FONT_CN, FONT_MONO } from "../lib/theme";
-import { clamp, ease, hash, lerp, prog, shake } from "../lib/math";
+import { clamp, ease, hash, lerp, noise1, prog, shake } from "../lib/math";
 import { Captions } from "../components/Caption";
 import { ChapterCard, Flash } from "../components/Hud";
 import { cue, sceneDuration } from "../timeline";
@@ -29,7 +29,7 @@ const PAL: [number, number, number, number][] = [
   [0.75, 235, 250, 255],
   [1, 255, 166, 61],
 ];
-/** CPU scanline speed (image rows per frame): ~1% of the picture every 2 seconds. */
+/** CPU scanline speed (image rows per frame): ~3% of the picture every 2 seconds. */
 const CPU_ROWS = 0.22;
 let mandel: HTMLCanvasElement | null = null;
 /** A Mandelbrot image (the classic GPU demo: seahorse valley, smooth colouring), computed once. */
@@ -79,7 +79,8 @@ const mandelbrot = () => {
   return c;
 };
 
-const panelA = (f: number) => ease.outCubic(prog(f, CORES - 20, CORES + 10)) * (1 - prog(f, MATRIX - 20, MATRIX + 10));
+// starts as the chapter card (dur 78) finishes fading, so the title doesn't ghost over the panel outlines
+const panelA = (f: number) => ease.outCubic(prog(f, CORES - 14, CORES + 10)) * (1 - prog(f, MATRIX - 20, MATRIX + 10));
 
 const Panels: React.FC = () => (
   <Canvas
@@ -136,7 +137,11 @@ const Panels: React.FC = () => (
           const d = Math.hypot(i - cols / 2, (j - rows / 2) * 1.6);
           const t = clamp((f - CORES - 6 - d * 0.5) / 8);
           if (t <= 0) continue;
-          const busy = race && f < MATRIX ? 0.6 + 0.4 * hash(i * 7 + j * 13 + Math.floor(f / 2)) : 0.5 + 0.2 * hash(i + j * 3);
+          // idle: a slow, smooth shimmer per core (each samples the noise at its own phase); race: frantic flicker
+          const busy =
+            race && f < MATRIX
+              ? 0.6 + 0.4 * hash(i * 7 + j * 13 + Math.floor(f / 2))
+              : 0.42 + 0.16 * hash(i + j * 3) + 0.28 * noise1(f / 9 + hash(i * 7 + j * 13) * 97);
           ctx.fillStyle = withAlpha(mix(C.blue, C.cyan, hash(i * 3 + j)), t * busy);
           ctx.fillRect(RX + i * cw + 1, PY + j * ch + 1, cw - 2, ch - 2);
         }
@@ -238,13 +243,15 @@ const Cval = (i: number, j: number) => {
   for (let k = 0; k < N; k++) s += A(i, k) * Bm(k, j);
   return s;
 };
-const ONE = MATRIX + 40; // first cell computed alone
-const ALL = MATRIX + 120; // then every cell at once
-const ZOOM = MATRIX + 175;
+const ONE = cue("gpu", "one"); // first cell computed alone
+const ONE_LEN = 40; // its 8 multiply-adds, one every 5 frames
+const ALL = cue("gpu", "all"); // then every cell at once
+const ZOOM = cue("gpu", "zoom"); // pull back into the sea of blocks
+const ZOOM_LEN = 88;
 
 /** Zoom-out: 0..1, the scale of the matrix block and where C's centre sits on screen. */
 const zoomAt = (f: number) => {
-  const z = ease.inOutCubic(prog(f, ZOOM, ZOOM + 110));
+  const z = ease.inOutCubic(prog(f, ZOOM, ZOOM + ZOOM_LEN));
   const ccx = CX0 + BLOCK / 2;
   const ccy = CY0 + BLOCK / 2;
   return { z, scale: lerp(1, 0.07, z), ccx, ccy, px: lerp(ccx, 960, z), py: lerp(ccy, 470, z) };
@@ -274,7 +281,7 @@ const MatrixCanvas: React.FC = () => (
             const y = py + j * pitch - bs / 2;
             if (x > w || y > h || x + bs < 0 || y + bs < 0) continue;
             const d = Math.hypot(i, j);
-            const tile = clamp((f - ZOOM - 8 - d * 1.6) / 12);
+            const tile = clamp((f - ZOOM - 6 - d * 1.3) / 10);
             if (tile <= 0) continue;
             const wave = 0.5 + 0.5 * Math.sin(d * 0.55 - (f - ZOOM) * 0.22);
             const col = mix(C.blue, C.cyan, wave);
@@ -295,7 +302,7 @@ const MatrixCanvas: React.FC = () => (
       ctx.translate(-ccx, -ccy);
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      const one = clamp((f - ONE) / 50);
+      const one = clamp((f - ONE) / ONE_LEN);
       const curK = Math.floor(one * N * 0.999);
       const drawGrid = (x0: number, y0: number, val: (i: number, j: number) => string, col: string, hi: (i: number, j: number) => number) => {
         for (let i = 0; i < N; i++)
@@ -326,7 +333,7 @@ const MatrixCanvas: React.FC = () => (
           return allT(i, j) > 0 ? String(Cval(i, j)) : "";
         },
         C.cyan,
-        (i, j) => (i === 0 && j === 0 && f >= ONE ? 1 : allT(i, j) * (1 - clamp((f - ALL - 30) / 30) * 0.5)),
+        (i, j) => (i === 0 && j === 0 && f >= ONE ? 1 : allT(i, j) * (1 - clamp((f - ALL - 24) / 24) * 0.5)),
       );
       ctx.restore();
       // the running dot product for the single cell
@@ -347,7 +354,7 @@ const MatrixCanvas: React.FC = () => (
 
 const MatrixLabels: React.FC = () => {
   const frame = useCurrentFrame();
-  const a = ease.outCubic(prog(frame, MATRIX, MATRIX + 20)) * (1 - prog(frame, ZOOM, ZOOM + 30));
+  const a = ease.outCubic(prog(frame, MATRIX, MATRIX + 20)) * (1 - prog(frame, ZOOM, ZOOM + 26));
   if (a <= 0) return null;
   const s = (x: number, y: number, t: string, col: string) => (
     <div style={{ position: "absolute", left: x, top: y, fontFamily: FONT_MONO, fontWeight: 800, fontSize: 44, color: col, textShadow: `0 0 16px ${col}` }}>{t}</div>
@@ -376,16 +383,16 @@ export const Gpu: React.FC = () => {
       </AbsoluteFill>
       <Flash at={BURST} dur={10} color={C.cyan} peak={0.3} />
       <Flash at={ALL} dur={10} color={C.cyan} peak={0.25} />
-      <ChapterCard index={5} title="一万个小学生" en="TEN THOUSAND WORKERS" color={C.cyan} dur={84} />
+      <ChapterCard index={5} title="一万个小学生" en="TEN THOUSAND WORKERS" color={C.cyan} dur={78} />
       <Captions
         accent={C.cyan}
         items={[
-          { from: 90, to: 228, text: "CPU像几位{{数学教授}}：再难的题都会解，但人数很少。", accent: C.amber },
-          { from: 232, to: 355, text: "GPU像{{上万名小学生}}：只会简单算术，但能同时开工。" },
-          { from: 362, to: 480, text: "画一帧游戏画面，要算{{几百万个像素}}——" },
-          { from: 484, to: 600, text: "教授们一行一行地算，小学生们{{一齐落笔}}。" },
-          { from: 612, to: 770, text: "AI的核心运算——{{矩阵乘法}}，也是海量的简单乘加。" },
-          { from: 776, to: DUR - 12, text: "于是，游戏显卡意外成了{{AI的发动机}}。" },
+          { from: CORES - 16, to: CORES + 104, text: "CPU像几位{{数学教授}}：再难的题都会解，但人数很少。", accent: C.amber },
+          { from: CORES + 108, to: RACE - 4, text: "GPU像{{上万名小学生}}：只会简单算术，但能同时开工。" },
+          { from: RACE + 2, to: RACE + 99, text: "画一帧游戏画面，要算{{几百万个像素}}——" },
+          { from: RACE + 103, to: MATRIX, text: "教授们一行一行地算，小学生们{{一齐落笔}}。" },
+          { from: MATRIX + 4, to: ZOOM, text: "AI的核心运算——{{矩阵乘法}}，也是海量的简单乘加。" },
+          { from: ZOOM + 4, to: DUR - 12, text: "于是，游戏显卡意外成了{{AI的发动机}}。" },
         ]}
       />
     </AbsoluteFill>
