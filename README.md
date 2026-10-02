@@ -58,6 +58,9 @@ node scripts/stills.mjs Scene-observable 0,300,600 out/stills 0.5   # 批量静�
   bigbang→cmb 是 `Main.tsx` 里 `XFADE_IN` 的 0.6 秒叠化（前一场景在下层多跑 0.6 秒，打点不变）。
 - **编码**：胶片颗粒是逐帧随机噪声，决定码率。颗粒 0.06 + crf 16 约 11–19 Mbps；现用 0.04 + crf 18，约为一半，肉眼无差别。
 - `scripts/stills.mjs` 的拼图需要系统 ffmpeg（带 drawtext/xstack）；Remotion 自带的 ffmpeg 是精简版，没有这些滤镜。
+- 有独显的机器加 `--gl=angle`（例：`npx remotion render CosmicExpansion out/cosmic-expansion.mp4 --gl=angle --concurrency=12`），
+  画面与默认的软件渲染 `swangle` 一致（PSNR≈50 dB），速度快很多。同一台机器上有别的 Remotion 渲染时，加 `--port=<空闲端口>`。
+- 透明背景的 `CanvasLayer` 如果某些帧只清空不绘制，整片渲染时偶尔会残留上一次的画面（静帧看不出来）——不可见时请直接卸载该图层。
 
 ## 进度
 
