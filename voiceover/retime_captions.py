@@ -3,7 +3,7 @@ import json, re, pathlib
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 FILES = {'hook':'S01Hook','hubble':'S02Hubble','space':'S03Space','rewind':'S04Rewind','bigbang':'S05BigBang',
          'cmb':'S06CMB','web':'S07Web','darkenergy':'S08DarkEnergy','observable':'S09Observable','finale':'S10Finale'}
-STATEMENT_LINES = {('cmb', 3), ('darkenergy', 2), ('finale', 5), ('finale', 6)}  # lines reading on-screen titles
+STATEMENT_LINES = {('space', 1), ('cmb', 3), ('darkenergy', 2), ('finale', 5), ('finale', 6)}  # lines reading on-screen titles
 KEEP_TO = {('observable', 4): 24.1, ('finale', 4): 20.3}  # captions end before the reveal / the bang flash
 timing = json.load(open(ROOT / 'voiceover' / 'timing.json', encoding='utf-8'))
 for sc, f in FILES.items():

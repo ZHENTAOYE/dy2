@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Lay the 贾老师 narration (voiceover/narration.mp3, one take of voiceover/script.txt
-from 冬瓜配音) over the music (public/audio/music.mp3) -> public/audio/soundtrack.mp3.
+from 冬瓜配音, plus separately recorded INSERTS) over the music (public/audio/music.mp3) -> public/audio/soundtrack.mp3.
 
 - The take is split into sentences at the ≥0.7 s pauses (one sentence per script line).
 - Each sentence is placed at its caption's start (TARGETS below), never more than
@@ -23,6 +23,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 SR = 48000
 EARLY, GAP, MAX_TEMPO, MAX_LATE = 0.4, 0.25, 1.15, 1.2
 DUCK_DB = -7.0
+# Lines recorded separately (script line index -> file); they are not in narration.mp3.
+INSERTS = {9: "voiceover/insert-space.mp3"}
 TL = json.loads((ROOT / "src" / "timeline.json").read_text(encoding="utf-8"))
 
 _bundled = ROOT / "node_modules" / "@remotion" / "compositor-win32-x64-msvc" / "ffmpeg.exe"
@@ -41,7 +43,7 @@ TOTAL = t
 TARGETS = [
     ("hook", 0.8), ("hook", 4.9), ("hook", 8.7),
     ("hubble", 0.6), ("hubble", 4.8), ("hubble", 9.0), ("hubble", 13.5), ("hubble", 17.8),
-    ("space", 0.5), ("space", 8.4), ("space", 12.6), ("space", 16.9), ("space", 20.3),
+    ("space", 0.5), ("space", 4.3), ("space", 8.4), ("space", 12.6), ("space", 16.9), ("space", 20.3),
     ("rewind", 0.4), ("rewind", 3.7), ("rewind", 7.5), ("rewind", 11.0),
     ("bigbang", 6.0), ("bigbang", 10.0), ("bigbang", 14.0), ("bigbang", 18.0), ("bigbang", 22.3),
     ("cmb", 0.5), ("cmb", 4.7), ("cmb", 8.7), ("cmb", 12.2), ("cmb", 16.0), ("cmb", 20.3),
@@ -137,6 +139,11 @@ def main():
     lines = [l for l in (ROOT / "voiceover" / "script.txt").read_text(encoding="utf-8").splitlines() if l.strip()]
     voice = decode(ROOT / "voiceover" / "narration.mp3", 1)[0]
     clips = sentences(voice)
+    for k in sorted(INSERTS):
+        x = decode(ROOT / INSERTS[k], 1)[0]
+        on = np.flatnonzero(np.abs(x) > 10 ** (-38 / 20))
+        pad = int(0.04 * SR)
+        clips.insert(k, x[max(0, on[0] - pad): on[-1] + pad])
     if not (len(clips) == len(lines) == len(TARGETS)):
         sys.exit(f"sentence count mismatch: audio {len(clips)}, script {len(lines)}, targets {len(TARGETS)}")
     plan = place(clips)
