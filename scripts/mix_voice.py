@@ -25,6 +25,8 @@ EARLY, GAP, MAX_TEMPO, MAX_LATE = 0.4, 0.25, 1.15, 1.2
 DUCK_DB = -7.0
 # Lines recorded separately (script line index -> file); they are not in narration.mp3.
 INSERTS = {9: "voiceover/insert-space.mp3"}
+# Fixed tempo for single lines (overrides the scene tempo): the closing line is read slowly.
+LINE_TEMPO = {52: 0.92}
 TL = json.loads((ROOT / "src" / "timeline.json").read_text(encoding="utf-8"))
 
 _bundled = ROOT / "node_modules" / "@remotion" / "compositor-win32-x64-msvc" / "ffmpeg.exe"
@@ -121,11 +123,11 @@ def place(clips):
         for f in np.arange(1.0, MAX_TEMPO + 1e-6, 0.01):
             pe, rows, ok = prev_end, [], True
             for k in idx:
-                d = len(clips[k]) / SR / f
+                d = len(clips[k]) / SR / LINE_TEMPO.get(k, f)
                 want = START[sc] + TARGETS[k][1]
                 s = max(want - EARLY, pe + GAP)
                 pe = s + d
-                rows.append((k, s, pe, f))
+                rows.append((k, s, pe, LINE_TEMPO.get(k, f)))
                 ok &= s - want <= MAX_LATE
             ok &= pe <= END[sc] - 0.3
             if ok:
