@@ -10,11 +10,11 @@ import {mulberry32} from '../lib/rng';
 import {drawCover, nebulaTexture, starDustTexture} from '../lib/space';
 
 const CAPTIONS = [
-  {from: 0.5, to: 4.0, text: '但这并不是一场|发生在空间【之中】的爆炸'},
-  {from: 8.4, to: 12.2, text: '星系就像嵌在一张|不断拉伸的网格上，彼此越离越远'},
-  {from: 12.6, to: 16.3, text: '无论站在哪个星系上看，|其他星系都在【远离你】'},
-  {from: 16.9, to: 20.0, text: '就像气球表面的点：|没有哪一个，是真正的中心'},
-  {from: 20.3, to: 23.6, text: '那么，如果让时间【倒流】呢？'},
+  {from: 0.1, to: 2.84, text: '但这并不是一场|发生在空间【之中】的爆炸'},
+  {from: 8.0, to: 12.18, text: '星系就像嵌在一张|不断拉伸的网格上，彼此越离越远'},
+  {from: 12.53, to: 16.77, text: '无论站在哪个星系上看，|其他星系都在【远离你】'},
+  {from: 17.12, to: 21.04, text: '就像气球表面的点：|没有哪一个，是真正的中心'},
+  {from: 21.39, to: 23.44, text: '那么，如果让时间【倒流】呢？'},
 ];
 
 const N = 12;

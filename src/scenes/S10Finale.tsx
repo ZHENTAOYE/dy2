@@ -29,11 +29,11 @@ const BANG = 20.4;
 const H = 0.11; // expansion rate of the toy de Sitter universe (1/s)
 
 const CAPTIONS = [
-  {from: 0.5, to: 4.3, text: '如今，最遥远的星系|正以【超光速】远离我们'},
-  {from: 4.6, to: 8.2, text: '这并不违反相对论：不是星系|在空间中飞驰，而是空间本身在膨胀'},
-  {from: 8.5, to: 12.0, text: '它们此刻发出的光，|将【永远】无法抵达地球'},
-  {from: 12.3, to: 16.4, text: '千亿年后，本星系群之外的星系，|都将从夜空中消失'},
-  {from: 16.7, to: 20.0, text: '但此刻，我们仍能看见|宇宙138亿年的过去'},
+  {from: 0.1, to: 3.21, text: '如今，最遥远的星系|正以【超光速】远离我们'},
+  {from: 4.2, to: 9.31, text: '这并不违反相对论：不是星系|在空间中飞驰，而是空间本身在膨胀'},
+  {from: 9.66, to: 12.88, text: '它们此刻发出的光，|将【永远】无法抵达地球'},
+  {from: 13.23, to: 17.08, text: '千亿年后，本星系群之外的星系，|都将从夜空中消失'},
+  {from: 17.43, to: 20.3, text: '但此刻，我们仍能看见|宇宙138亿年的过去'},
 ];
 
 type Gal = {r: number; a: number; s: number; rot: number; seed: number; tilt: number};

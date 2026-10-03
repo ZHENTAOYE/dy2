@@ -12,9 +12,9 @@ import {drawCover, drawStars3, makeStars3, milkyWayTexture, nebulaTexture, starD
 const SLAM = 10.5;
 
 const CAPTIONS = [
-  {from: 0.8, to: 4.4, text: '仰望夜空，星辰仿佛亘古不变'},
-  {from: 4.9, to: 8.25, text: '但事实上，|宇宙中的星系正在【彼此远离】'},
-  {from: 8.7, to: 10.2, text: '而且，越来越快——'},
+  {from: 0.4, to: 3.3, text: '仰望夜空，星辰仿佛亘古不变'},
+  {from: 4.5, to: 8.5, text: '但事实上，|宇宙中的星系正在【彼此远离】'},
+  {from: 8.85, to: 10.46, text: '而且，越来越快——'},
 ];
 
 // Camera speed profile (world units / s): calm drift → expansion → warp → settle.

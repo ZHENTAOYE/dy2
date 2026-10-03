@@ -12,11 +12,11 @@ import {gauss, mulberry32} from '../lib/rng';
 import {drawCover, makeCosmicWeb, nebulaTexture} from '../lib/space';
 
 const CAPTIONS = [
-  {from: 0.5, to: 4.0, text: '随后，宇宙陷入了漫长的【黑暗时代】'},
-  {from: 4.3, to: 8.3, text: '约1亿到2亿年后，|引力把气体聚拢——【第一代恒星】点燃了'},
-  {from: 8.6, to: 12.0, text: '恒星聚成星系，星系又汇成星系团'},
-  {from: 12.3, to: 16.0, text: '它们沿着暗物质的骨架，|编织出一张横跨宇宙的巨网'},
-  {from: 20.3, to: 23.6, text: '而这张网的“网眼”，|至今仍在不断被拉大'},
+  {from: 0.1, to: 3.05, text: '随后，宇宙陷入了漫长的【黑暗时代】'},
+  {from: 3.9, to: 8.37, text: '约1亿到2亿年后，|引力把气体聚拢——【第一代恒星】点燃了'},
+  {from: 8.72, to: 12.25, text: '恒星聚成星系，星系又汇成星系团'},
+  {from: 12.6, to: 16.71, text: '它们沿着暗物质的骨架，|编织出一张横跨宇宙的巨网'},
+  {from: 19.9, to: 22.88, text: '而这张网的“网眼”，|至今仍在不断被拉大'},
 ];
 
 const WEB_IN = 9.4;

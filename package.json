@@ -5,7 +5,8 @@
   "description": "宇宙膨胀 · 科普动画（Remotion 程序化绘制）",
   "scripts": {
     "studio": "remotion studio",
-    "audio": "python3 scripts/make_soundtrack.py",
+    "audio": "python3 scripts/make_soundtrack.py && python3 scripts/mix_voice.py && python3 voiceover/retime_captions.py",
+    "voice": "python3 scripts/mix_voice.py && python3 voiceover/retime_captions.py",
     "render": "remotion render CosmicExpansion out/cosmic-expansion.mp4",
     "render:vertical": "remotion render CosmicExpansionVertical out/cosmic-expansion-vertical.mp4",
     "typecheck": "tsc --noEmit"

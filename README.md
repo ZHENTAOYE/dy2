@@ -50,6 +50,15 @@ node scripts/stills.mjs Scene-observable 0,300,600 out/stills 0.5   # 批量静�
 | 9 | observable | 183s | 32s | 从地球一路缩放到 930 亿光年的可观测宇宙 |
 | 10 | finale | 215s | 32s | 哈勃半径与超光速退行、遥远未来、终章与萨根名言 |
 
+## 旁白
+
+- `voiceover/script.txt`：旁白稿（字幕 + 4 句屏幕大标题），在冬瓜配音用「贾老师」一次合成，存为 `voiceover/narration.mp3`（账号作品 ID 143836）。
+- `scripts/mix_voice.py`：按 ≥0.7 s 停顿切成每行一句，放到对应字幕起点（最多提前 0.4 s）；某场景放不下时整段略微加速（≤1.15×）；
+  配乐（`public/audio/music.mp3`）在说话时压低 7 dB，整体 −16 LUFS → `public/audio/soundtrack.mp3`，并写 `voiceover/timing.json`。
+- `voiceover/retime_captions.py`：按 timing.json 改写各场景 `CAPTIONS` 的 from/to（字幕随声音出现/消失）。
+- 改了某句旁白：重新合成并替换 `narration.mp3`（句数要和 script.txt 一致），然后 `npm run voice`，再渲染。
+- `npm run audio` 会先重新合成配乐（需要系统 ffmpeg），再执行以上两步。
+
 ## 约定
 
 - **字幕竖屏断行**：字幕文本里的 `|` 只在竖屏换行、横屏忽略。竖屏每行最多约 16 个汉字，两行的字幕都要在词组之间放一个 `|`；

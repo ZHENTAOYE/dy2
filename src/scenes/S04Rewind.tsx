@@ -11,10 +11,10 @@ import {mulberry32} from '../lib/rng';
 import {drawCover, drawStars3, makeStars3, nebulaTexture} from '../lib/space';
 
 const CAPTIONS = [
-  {from: 0.4, to: 3.4, text: '让时间倒流……'},
-  {from: 3.7, to: 7.2, text: '星系彼此靠近，|宇宙越来越小、越来越密'},
-  {from: 7.5, to: 10.8, text: '温度飙升至数十亿度，|原子被撕碎成基本粒子'},
-  {from: 11.0, to: 13.4, text: '直到一切，回到最初的那一刻'},
+  {from: 0.0, to: 1.2, text: '让时间倒流……'},
+  {from: 3.3, to: 7.16, text: '星系彼此靠近，|宇宙越来越小、越来越密'},
+  {from: 7.51, to: 11.51, text: '温度飙升至数十亿度，|原子被撕碎成基本粒子'},
+  {from: 11.86, to: 14.5, text: '直到一切，回到最初的那一刻'},
 ];
 
 const END = 13.8;

@@ -26,11 +26,11 @@ const SN = 1.5;
 const ACCEL = 8.5;
 
 const CAPTIONS = [
-  {from: 0.5, to: 4.2, text: '1998年，两个天文团队|观测遥远的【Ia型超新星】'},
-  {from: 4.5, to: 8.2, text: '人们原以为，|引力会让宇宙的膨胀逐渐【减速】'},
-  {from: 12.1, to: 15.8, text: '推动加速的神秘力量，被称为【暗能量】'},
-  {from: 16.1, to: 19.8, text: '暗能量约占宇宙的68%，|暗物质约占27%'},
-  {from: 20.1, to: 23.6, text: '而我们熟悉的一切普通物质，|只占约【5%】'},
+  {from: 0.1, to: 4.21, text: '1998年，两个天文团队|观测遥远的【Ia型超新星】'},
+  {from: 4.56, to: 7.77, text: '人们原以为，|引力会让宇宙的膨胀逐渐【减速】'},
+  {from: 11.7, to: 14.27, text: '推动加速的神秘力量，被称为【暗能量】'},
+  {from: 15.7, to: 20.02, text: '暗能量约占宇宙的68%，|暗物质约占27%'},
+  {from: 20.37, to: 23.67, text: '而我们熟悉的一切普通物质，|只占约【5%】'},
 ];
 
 // Scale factor: ΛCDM (accelerating) vs a matter-only universe matched early on.
@@ -392,7 +392,7 @@ export const SceneDarkEnergy: React.FC<{dur: number}> = ({dur}) => {
       ) : null}
 
       <ChapterTag index="07" title="加速膨胀" en="ACCELERATING EXPANSION" dur={dur} />
-      <Statement from={ACCEL} to={11.5} text="膨胀，正在加速！" theme="red" size={110} serif slam y={0.86} />
+      <Statement from={ACCEL} to={11.0} text="膨胀，正在加速！" theme="red" size={110} serif slam y={0.86} />
       <Statement from={12.1} to={15.6} text="暗能量" sub="DARK ENERGY" theme="violet" size={180} serif y={0.44} />
       <Captions items={CAPTIONS} />
       <Flash amount={decay(t, SN - 0.03, 5) * 0.7 + decay(t, ACCEL - 0.03, 6) * 0.6} />

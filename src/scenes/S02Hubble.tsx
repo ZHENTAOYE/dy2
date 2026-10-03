@@ -22,11 +22,11 @@ import {gauss, mulberry32} from '../lib/rng';
 import {drawCover, nebulaTexture, starDustTexture} from '../lib/space';
 
 const CAPTIONS = [
-  {from: 0.6, to: 4.4, text: '1929年，天文学家【哈勃】|发现了一个奇怪的现象'},
-  {from: 4.8, to: 8.6, text: '几乎所有遥远星系的光，|都在向【红色】一端偏移'},
-  {from: 9.0, to: 13.0, text: '光源远离我们时，光波被拉长、|颜色变红——这就是【红移】'},
-  {from: 13.5, to: 17.4, text: '更惊人的是：星系越远，|远离我们的速度就越快'},
-  {from: 17.8, to: 21.6, text: '距离每增加326万光年，|退行速度就增加约【70公里/秒】'},
+  {from: 0.2, to: 4.41, text: '1929年，天文学家【哈勃】|发现了一个奇怪的现象'},
+  {from: 4.76, to: 8.48, text: '几乎所有遥远星系的光，|都在向【红色】一端偏移'},
+  {from: 8.83, to: 13.73, text: '光源远离我们时，光波被拉长、|颜色变红——这就是【红移】'},
+  {from: 14.08, to: 17.98, text: '更惊人的是：星系越远，|远离我们的速度就越快'},
+  {from: 18.33, to: 23.82, text: '距离每增加326万光年，|退行速度就增加约【70公里/秒】'},
 ];
 
 type FieldGal = {ang: number; d: number; v: number; seed: number; size: number; rot: number; kind: 'spiral' | 'barred' | 'elliptical'};

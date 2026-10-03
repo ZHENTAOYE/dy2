@@ -751,7 +751,7 @@ def main():
         w.setsampwidth(2)
         w.setframerate(SR)
         w.writeframes(pcm.tobytes())
-    mp3 = out_dir / "soundtrack.mp3"
+    mp3 = out_dir / "music.mp3"  # scripts/mix_voice.py adds the narration -> soundtrack.mp3
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(wav), "-c:a", "libmp3lame", "-b:a", "224k", str(mp3)], check=True)
     if "--wav" not in sys.argv:
         wav.unlink()

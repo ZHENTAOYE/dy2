@@ -1,0 +1,470 @@
+[
+ {
+  "line": 0,
+  "scene": "hook",
+  "text": "仰望夜空，星辰仿佛亘古不变。",
+  "tempo": 1.0,
+  "start": 0.4,
+  "end": 3.3,
+  "late": -0.4
+ },
+ {
+  "line": 1,
+  "scene": "hook",
+  "text": "但事实上，宇宙中的星系正在彼此远离。",
+  "tempo": 1.0,
+  "start": 4.5,
+  "end": 8.6,
+  "late": -0.4
+ },
+ {
+  "line": 2,
+  "scene": "hook",
+  "text": "而且，越来越快。",
+  "tempo": 1.0,
+  "start": 8.85,
+  "end": 10.46,
+  "late": 0.15
+ },
+ {
+  "line": 3,
+  "scene": "hubble",
+  "text": "1929年，天文学家哈勃发现了一个奇怪的现象。",
+  "tempo": 1.0,
+  "start": 0.2,
+  "end": 4.51,
+  "late": -0.4
+ },
+ {
+  "line": 4,
+  "scene": "hubble",
+  "text": "几乎所有遥远星系的光，都在向红色一端偏移。",
+  "tempo": 1.0,
+  "start": 4.76,
+  "end": 8.58,
+  "late": -0.04
+ },
+ {
+  "line": 5,
+  "scene": "hubble",
+  "text": "光源远离我们时，光波被拉长、颜色变红——这就是红移。",
+  "tempo": 1.0,
+  "start": 8.83,
+  "end": 13.83,
+  "late": -0.17
+ },
+ {
+  "line": 6,
+  "scene": "hubble",
+  "text": "更惊人的是：星系越远，远离我们的速度就越快。",
+  "tempo": 1.0,
+  "start": 14.08,
+  "end": 18.08,
+  "late": 0.58
+ },
+ {
+  "line": 7,
+  "scene": "hubble",
+  "text": "距离每增加326万光年，退行速度就增加约70公里每秒。",
+  "tempo": 1.0,
+  "start": 18.33,
+  "end": 23.82,
+  "late": 0.53
+ },
+ {
+  "line": 8,
+  "scene": "space",
+  "text": "但这并不是一场发生在空间之中的爆炸。",
+  "tempo": 1.05,
+  "start": 0.1,
+  "end": 2.84,
+  "late": -0.4
+ },
+ {
+  "line": 9,
+  "scene": "space",
+  "text": "星系就像嵌在一张不断拉伸的网格上，彼此越离越远。",
+  "tempo": 1.05,
+  "start": 8.0,
+  "end": 12.28,
+  "late": -0.4
+ },
+ {
+  "line": 10,
+  "scene": "space",
+  "text": "无论站在哪个星系上看，其他星系都在远离你。",
+  "tempo": 1.05,
+  "start": 12.53,
+  "end": 16.87,
+  "late": -0.07
+ },
+ {
+  "line": 11,
+  "scene": "space",
+  "text": "就像气球表面的点：没有哪一个，是真正的中心。",
+  "tempo": 1.05,
+  "start": 17.12,
+  "end": 21.14,
+  "late": 0.22
+ },
+ {
+  "line": 12,
+  "scene": "space",
+  "text": "那么，如果让时间倒流呢？",
+  "tempo": 1.05,
+  "start": 21.39,
+  "end": 23.44,
+  "late": 1.09
+ },
+ {
+  "line": 13,
+  "scene": "rewind",
+  "text": "让时间倒流。",
+  "tempo": 1.0,
+  "start": 0.0,
+  "end": 1.17,
+  "late": -0.4
+ },
+ {
+  "line": 14,
+  "scene": "rewind",
+  "text": "星系彼此靠近，宇宙越来越小、越来越密。",
+  "tempo": 1.0,
+  "start": 3.3,
+  "end": 7.26,
+  "late": -0.4
+ },
+ {
+  "line": 15,
+  "scene": "rewind",
+  "text": "温度飙升至数十亿度，原子被撕碎成基本粒子。",
+  "tempo": 1.0,
+  "start": 7.51,
+  "end": 11.61,
+  "late": 0.01
+ },
+ {
+  "line": 16,
+  "scene": "rewind",
+  "text": "直到一切，回到最初的那一刻。",
+  "tempo": 1.0,
+  "start": 11.86,
+  "end": 14.5,
+  "late": 0.86
+ },
+ {
+  "line": 17,
+  "scene": "bigbang",
+  "text": "宇宙从一个极热、极密的状态中诞生。",
+  "tempo": 1.15,
+  "start": 5.6,
+  "end": 8.22,
+  "late": -0.4
+ },
+ {
+  "line": 18,
+  "scene": "bigbang",
+  "text": "诞生后约10的负36次方秒，宇宙经历了一场疯狂的暴胀。",
+  "tempo": 1.15,
+  "start": 9.6,
+  "end": 13.78,
+  "late": -0.4
+ },
+ {
+  "line": 19,
+  "scene": "bigbang",
+  "text": "在不到10的负32次方秒内，尺度暴涨了至少10的26次方倍。",
+  "tempo": 1.15,
+  "start": 14.03,
+  "end": 18.96,
+  "late": 0.03
+ },
+ {
+  "line": 20,
+  "scene": "bigbang",
+  "text": "相当于一个质子，瞬间被拉伸到日地距离那么大。",
+  "tempo": 1.15,
+  "start": 19.21,
+  "end": 22.52,
+  "late": 1.21
+ },
+ {
+  "line": 21,
+  "scene": "bigbang",
+  "text": "微小的量子涨落也被急速放大，成为日后星系的种子。",
+  "tempo": 1.15,
+  "start": 22.77,
+  "end": 26.82,
+  "late": 0.47
+ },
+ {
+  "line": 22,
+  "scene": "cmb",
+  "text": "最初的38万年里，宇宙是一锅炽热、浑浊的等离子体。",
+  "tempo": 1.05,
+  "start": 0.1,
+  "end": 4.45,
+  "late": -0.4
+ },
+ {
+  "line": 23,
+  "scene": "cmb",
+  "text": "光子不断被自由电子散射，寸步难行。",
+  "tempo": 1.05,
+  "start": 4.7,
+  "end": 7.75,
+  "late": 0.0
+ },
+ {
+  "line": 24,
+  "scene": "cmb",
+  "text": "直到宇宙冷却到约3000开尔文，电子被原子核捕获。",
+  "tempo": 1.05,
+  "start": 8.3,
+  "end": 11.98,
+  "late": -0.4
+ },
+ {
+  "line": 25,
+  "scene": "cmb",
+  "text": "宇宙，第一次变得透明。",
+  "tempo": 1.05,
+  "start": 12.23,
+  "end": 14.2,
+  "late": 0.03
+ },
+ {
+  "line": 26,
+  "scene": "cmb",
+  "text": "那一刻释放的光，穿越138亿年，至今仍充满整个宇宙。",
+  "tempo": 1.05,
+  "start": 15.6,
+  "end": 20.28,
+  "late": -0.4
+ },
+ {
+  "line": 27,
+  "scene": "cmb",
+  "text": "它就是宇宙微波背景辐射，如今温度只有2.725开尔文。",
+  "tempo": 1.05,
+  "start": 20.53,
+  "end": 25.66,
+  "late": 0.23
+ },
+ {
+  "line": 28,
+  "scene": "web",
+  "text": "随后，宇宙陷入了漫长的黑暗时代。",
+  "tempo": 1.0,
+  "start": 0.1,
+  "end": 3.05,
+  "late": -0.4
+ },
+ {
+  "line": 29,
+  "scene": "web",
+  "text": "约1亿到2亿年后，引力把气体聚拢——第一代恒星点燃了。",
+  "tempo": 1.0,
+  "start": 3.9,
+  "end": 8.47,
+  "late": -0.4
+ },
+ {
+  "line": 30,
+  "scene": "web",
+  "text": "恒星聚成星系，星系又汇成星系团。",
+  "tempo": 1.0,
+  "start": 8.72,
+  "end": 12.35,
+  "late": 0.12
+ },
+ {
+  "line": 31,
+  "scene": "web",
+  "text": "它们沿着暗物质的骨架，编织出一张横跨宇宙的巨网。",
+  "tempo": 1.0,
+  "start": 12.6,
+  "end": 16.71,
+  "late": 0.3
+ },
+ {
+  "line": 32,
+  "scene": "web",
+  "text": "而这张网的“网眼”，至今仍在不断被拉大。",
+  "tempo": 1.0,
+  "start": 19.9,
+  "end": 22.88,
+  "late": -0.4
+ },
+ {
+  "line": 33,
+  "scene": "darkenergy",
+  "text": "1998年，两个天文团队观测遥远的一A型超新星。",
+  "tempo": 1.09,
+  "start": 0.1,
+  "end": 4.31,
+  "late": -0.4
+ },
+ {
+  "line": 34,
+  "scene": "darkenergy",
+  "text": "人们原以为，引力会让宇宙的膨胀逐渐减速。",
+  "tempo": 1.09,
+  "start": 4.56,
+  "end": 7.77,
+  "late": 0.06
+ },
+ {
+  "line": 35,
+  "scene": "darkenergy",
+  "text": "但观测发现：膨胀，正在加速！",
+  "tempo": 1.09,
+  "start": 8.1,
+  "end": 10.77,
+  "late": -0.4
+ },
+ {
+  "line": 36,
+  "scene": "darkenergy",
+  "text": "推动加速的神秘力量，被称为暗能量。",
+  "tempo": 1.09,
+  "start": 11.7,
+  "end": 14.27,
+  "late": -0.4
+ },
+ {
+  "line": 37,
+  "scene": "darkenergy",
+  "text": "暗能量约占宇宙的68%，暗物质约占27%。",
+  "tempo": 1.09,
+  "start": 15.7,
+  "end": 20.12,
+  "late": -0.4
+ },
+ {
+  "line": 38,
+  "scene": "darkenergy",
+  "text": "而我们熟悉的一切普通物质，只占约5%。",
+  "tempo": 1.09,
+  "start": 20.37,
+  "end": 23.67,
+  "late": 0.27
+ },
+ {
+  "line": 39,
+  "scene": "observable",
+  "text": "现在，让我们从地球出发，一路向外。",
+  "tempo": 1.09,
+  "start": 0.1,
+  "end": 2.9,
+  "late": -0.4
+ },
+ {
+  "line": 40,
+  "scene": "observable",
+  "text": "银河系：直径约10万光年，拥有数千亿颗恒星。",
+  "tempo": 1.09,
+  "start": 9.2,
+  "end": 13.17,
+  "late": -0.4
+ },
+ {
+  "line": 41,
+  "scene": "observable",
+  "text": "而它，只是可观测宇宙中数千亿个星系之一。",
+  "tempo": 1.09,
+  "start": 13.6,
+  "end": 17.02,
+  "late": -0.4
+ },
+ {
+  "line": 42,
+  "scene": "observable",
+  "text": "宇宙的年龄，只有138亿年。",
+  "tempo": 1.09,
+  "start": 17.6,
+  "end": 20.15,
+  "late": -0.4
+ },
+ {
+  "line": 43,
+  "scene": "observable",
+  "text": "但我们能看到的宇宙，直径约930亿光年。",
+  "tempo": 1.09,
+  "start": 21.3,
+  "end": 24.98,
+  "late": -0.4
+ },
+ {
+  "line": 44,
+  "scene": "observable",
+  "text": "因为在光赶路的同时，空间本身也在不断膨胀。",
+  "tempo": 1.09,
+  "start": 27.9,
+  "end": 31.69,
+  "late": -0.4
+ },
+ {
+  "line": 45,
+  "scene": "finale",
+  "text": "如今，最遥远的星系正以超光速远离我们。",
+  "tempo": 1.14,
+  "start": 0.1,
+  "end": 3.21,
+  "late": -0.4
+ },
+ {
+  "line": 46,
+  "scene": "finale",
+  "text": "这并不违反相对论：不是星系在空间中飞驰，而是空间本身在膨胀。",
+  "tempo": 1.14,
+  "start": 4.2,
+  "end": 9.41,
+  "late": -0.4
+ },
+ {
+  "line": 47,
+  "scene": "finale",
+  "text": "它们此刻发出的光，将永远无法抵达地球。",
+  "tempo": 1.14,
+  "start": 9.66,
+  "end": 12.98,
+  "late": 1.16
+ },
+ {
+  "line": 48,
+  "scene": "finale",
+  "text": "千亿年后，本星系群之外的星系，都将从夜空中消失。",
+  "tempo": 1.14,
+  "start": 13.23,
+  "end": 17.18,
+  "late": 0.93
+ },
+ {
+  "line": 49,
+  "scene": "finale",
+  "text": "但此刻，我们仍能看见宇宙138亿年的过去。",
+  "tempo": 1.14,
+  "start": 17.43,
+  "end": 21.13,
+  "late": 0.73
+ },
+ {
+  "line": 50,
+  "scene": "finale",
+  "text": "宇宙仍在膨胀。",
+  "tempo": 1.14,
+  "start": 21.38,
+  "end": 22.54,
+  "late": 0.93
+ },
+ {
+  "line": 51,
+  "scene": "finale",
+  "text": "而我们，是宇宙认识自己的一种方式。",
+  "tempo": 1.14,
+  "start": 26.2,
+  "end": 28.95,
+  "late": -0.4
+ }
+]
