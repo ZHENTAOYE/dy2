@@ -22,7 +22,8 @@ import numpy as np
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SR = 48000
 EARLY, GAP, MAX_TEMPO, MAX_LATE = 0.4, 0.25, 1.15, 1.2
-DUCK_DB = -7.0
+DUCK_DB = -4.0
+VOICE_DB = 3.0  # music sits ~10 dB under the voice while it speaks
 # Lines recorded separately (script line index -> file); they are not in narration.mp3.
 INSERTS = {9: "voiceover/insert-space.mp3"}
 # Fixed tempo for single lines (overrides the scene tempo): the closing line is read slowly.
@@ -184,7 +185,7 @@ def main():
     # Voice level relative to music, then loudness-normalise the sum.
     vrms = np.sqrt(np.mean(vo[active > 0] ** 2)) + 1e-9
     mrms = np.sqrt(np.mean(music ** 2)) + 1e-9
-    vo *= (mrms * 10 ** (6 / 20)) / vrms  # voice ~6 dB above the (unducked) music bed
+    vo *= (mrms * 10 ** (VOICE_DB / 20)) / vrms  # voice level vs the (unducked) music bed
     mix = music * duck + vo[None, :]
 
     tmp = ROOT / "public" / "audio" / "_mix.wav"
